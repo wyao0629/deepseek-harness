@@ -1,3 +1,4 @@
+import { progressWireEvent } from './progress-wire.ts'
 /** Cold Session history pagination and live-event source. */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -418,7 +419,7 @@ function entryFor(event: SessionEvent): SessionEventEntry {
   return {
     type: 'event',
     // Session.append validates and freezes event data as JSON before publication.
-    event: event as unknown as SessionWireEvent,
+    event: progressWireEvent(event as unknown as SessionWireEvent),
   }
 }
 
