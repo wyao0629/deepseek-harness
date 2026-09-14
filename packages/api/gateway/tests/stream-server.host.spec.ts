@@ -26,6 +26,26 @@ afterEach(async () => {
 })
 
 describe('Remote stream mux server carrier lifecycle', () => {
+  it('compresses large history-shaped frames without changing the delivered content', async () => {
+    const history = '历史记录与工具输出 '.repeat(20_000)
+    const entry = await startMux(async () => (async function* () { yield history })())
+    const client = await connect(entry.url)
+    try {
+      expect(client.extensions).toContain('permessage-deflate')
+      const transport = client as unknown as { _socket: { bytesRead: number } }
+      const before = transport._socket.bytesRead
+      const message = once(client, 'message')
+      client.send(openFrame('compressed-history'))
+      const [data] = await message as [Buffer]
+      expect(JSON.parse(data.toString())).toMatchObject({ type: 'item', value: history })
+      expect(transport._socket.bytesRead - before).toBeLessThan(Buffer.byteLength(history) / 4)
+    } finally {
+      const closed = once(client, 'close')
+      client.close()
+      await closed
+    }
+  })
+
   it('sends WebSocket Ping control frames without application messages', async () => {
     const entry = await startMux(async (_endpoint, _payload, signal) => waitForAbort(signal), 20)
     const client = await connect(entry.url)

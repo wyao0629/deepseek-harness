@@ -1,3 +1,4 @@
+import { progressTurn } from './progress.mjs';
 import z from '@deepseek-ai/schemastery';
 import { mkdir, readFile, writeFile, rename, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -170,8 +171,9 @@ export class KimiRuntime {
           if (turn) {
             // Once recovering from persisted frames, keep one text authority for this turn.
             snapshotMode = true;
-            const hash = createHash('sha256').update(JSON.stringify(turn)).digest('hex');
-            if (hash !== progressHash) { log(agent.session, 'progress', {nativeId:binding.nativeId,promptId,turn}); progressHash = hash; }
+            const progress = progressTurn(turn);
+            const hash = createHash('sha256').update(JSON.stringify(progress)).digest('hex');
+            if (hash !== progressHash) { log(agent.session, 'progress', {nativeId:binding.nativeId,promptId,turn:progress}); progressHash = hash; }
             const text = snapshotSuffix(output, turnText(turn));
             const thought = snapshotSuffix(reasoning, transcriptThinking(turn));
             if (thought) {

@@ -23,7 +23,16 @@ const MAX_MISSED_HEARTBEATS = 2
 
 /** Own the no-server WebSocket acceptor and every active logical stream. */
 export class RemoteStreamMuxServer {
-  private readonly server = new WebSocketServer({ noServer: true })
+  private readonly server = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: {
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+      threshold: 1024,
+      concurrencyLimit: 4,
+      zlibDeflateOptions: { level: 3 },
+    },
+  })
   private readonly connections = new Set<Promise<void>>()
   private readonly missedHeartbeats = new WeakMap<WebSocket, number>()
   private readonly terminationReasons = new WeakMap<WebSocket, string>()
