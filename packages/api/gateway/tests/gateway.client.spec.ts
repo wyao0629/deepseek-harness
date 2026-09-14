@@ -2386,6 +2386,31 @@ describe('Remote stream client carrier lifecycle', () => {
     })
   })
 
+  it('reopens a lost carrier when a logical stream retries without a host reconnect', async () => {
+    await withFakeWebSocket('https://harness.example', async () => {
+      const client = new RemoteStreamMuxClient()
+      client.start()
+      let retry: Promise<IteratorResult<unknown>> | undefined
+      try {
+        const first = client.open('feed/follow', {}, new AbortController().signal).next()
+        const failed = expect(first).rejects.toThrow('WebSocket closed')
+        await vi.waitFor(() => { expect(FakeWebSocket.sockets[0]?.sent).toHaveLength(1) })
+        FakeWebSocket.sockets[0]!.drop()
+        await failed
+        retry = client.open('feed/follow', {}, new AbortController().signal).next()
+        void retry.catch(() => {})
+        await vi.waitFor(() => { expect(FakeWebSocket.sockets[1]?.sent).toHaveLength(1) })
+        const replacement = FakeWebSocket.sockets[1]!
+        const opened = JSON.parse(replacement.sent[0]!) as { streamId: string }
+        replacement.receive({ type: 'end', streamId: opened.streamId })
+        await expect(retry).resolves.toEqual({ done: true, value: undefined })
+      } finally {
+        await client.close()
+        await retry?.catch(() => {})
+      }
+    })
+  })
+
   it('mints a new wire stream id when the same endpoint opens on a replacement socket', async () => {
     await withFakeWebSocket('https://harness.example', async () => {
       const client = new RemoteStreamMuxClient()
