@@ -1,6 +1,6 @@
 {
   "name": "dsh-codex",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Run the DSH-selected model inside native Codex, with linked session history",

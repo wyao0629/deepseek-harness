@@ -1,15 +1,16 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import { dshHome, codexHome } from './paths.mjs';
+import { dshHome } from './paths.mjs';
 import { randomBytes } from 'node:crypto';
 import z from '@deepseek-ai/schemastery';
 import { CodexLlmAdapter, CodexSupervisor } from '../vendor/codex-adapter.mjs';
 import { decodeRoute } from './route.mjs';
 import { startBridge } from './bridge.mjs';
+import { createControls } from './controls.mjs';
 import { startSync } from './sync.mjs';
 
 export const name = 'dsh-codex';
-export const inject = ['llm', 'subprocess', 'sessions', 'agents', 'userQuestions', 'attachments', 'sessionController'];
+export const inject = ['llm', 'subprocess', 'sessions', 'agents', 'userQuestions', 'attachments', 'sessionController', 'sandboxPolicy', 'approval'];
 export const Config = z.object({
   bridgePort: z.number().default(18791),
   executablePath: z.string().default(process.env.CODEX_BIN ?? 'codex'),
@@ -44,12 +45,12 @@ export class DshCodexAdapter extends CodexLlmAdapter {
     const nativeRoute = threadRoute(options.model, route.model, port, token);
     if (Number.isSafeInteger(info.context?.contextWindow)) nativeRoute.config.model_context_window = info.context.contextWindow;
     const onThreadBound = async binding => {
-      const dir = join(dshHome(), 'dsh-codex', 'threads');
-      await mkdir(dir, { recursive: true, mode: 0o700 });
-      await writeFile(join(dir, binding.threadId + '.json'), JSON.stringify({ ...binding, bridgePort: port }), { mode: 0o600 });
+      await persistBinding(binding, port);
     };
     // A fresh native reader sees CLI changes persisted since the previous DSH turn.
-    const supervisor = new CodexSupervisor(this.ctx, this.config);
+    const supervisor = new CodexSupervisor(this.ctx, { ...this.config,
+      nativeArgs: info.context?.contextWindow ? ['-c', `model_context_window=${info.context.contextWindow}`, '-c', `model_auto_compact_token_limit=${Math.floor(info.context.contextWindow * 0.8)}`] : [],
+    });
     const adapter = new CodexLlmAdapter(this.ctx, supervisor, this.config);
     this.busy.add(options.sessionId);
     try {
@@ -57,6 +58,15 @@ export class DshCodexAdapter extends CodexLlmAdapter {
         codexRoute: { ...nativeRoute, ...(options.system ? { developerInstructions: options.system } : {}) } });
     } finally { await supervisor.dispose(); this.busy.delete(options.sessionId); }
   }
+}
+
+export async function persistBinding(binding, port) {
+  const dir = join(dshHome(), 'dsh-codex', 'threads');
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  const path = join(dir, binding.threadId + '.json');
+  const tmp = path + '.tmp';
+  await writeFile(tmp, JSON.stringify({ ...binding, bridgePort: port }), { mode: 0o600 });
+  await rename(tmp, path);
 }
 
 export function apply(ctx, config) {
@@ -76,8 +86,10 @@ export function apply(ctx, config) {
   const busy = new Set();
   const sync = startSync(ctx, busy);
   const supervisor = new CodexSupervisor(ctx, config);
+  const controls = createControls(ctx, config, ready, threadRoute, busy, async binding => persistBinding(binding, (await ready).port));
+  ctx.provide('dshCodex', controls);
   ctx.llm.registerAdapter(['codex'], new DshCodexAdapter(ctx, supervisor, config, ready, busy));
   ctx.effect(function* () {
-    yield async () => { await sync.stop(); await supervisor.dispose(); await ready.catch(() => {}); if (bridge) await new Promise(resolve => bridge.close(resolve)); };
+    yield async () => { await controls.stop(); await sync.stop(); await supervisor.dispose(); await ready.catch(() => {}); if (bridge) await new Promise(resolve => bridge.close(resolve)); };
   }, 'dsh-codex runtime');
 }

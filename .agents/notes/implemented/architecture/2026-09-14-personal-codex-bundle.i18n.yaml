@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-14-personal-codex-bundle.md
-2026-09-14-personal-codex-bundle.md: 364fea5ce9d6cac14b6448751647d7e32024fa10
-2026-09-14-personal-codex-bundle.zh.md: b2475aa8c85d2a15feb329c90816101fe244b8cf
+2026-09-14-personal-codex-bundle.md: 4e2a09f117320dc984da753c73fd07e6ec995814
+2026-09-14-personal-codex-bundle.zh.md: 4106e2f7c42ba42205e6d241b0fd2b79cc1617ba

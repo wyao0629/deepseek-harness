@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { parseTurns, importTurns } from '../lib/sync.mjs';
+import { parseTurns, importTurns, hydrateNativeImages } from '../lib/sync.mjs';
 import { latestBinding, visibleTranscript, transcriptHash } from '../vendor/codex-adapter.mjs';
 const require = createRequire(process.env.DSH_PACKAGE_JSON ?? new URL('../../../apps/cli/package.json', import.meta.url));
 const { Session } = require('@deepseek-ai/dsh-session');
@@ -44,4 +44,31 @@ test('parser uses native user events and ignores environment injection / partial
   const turns = parseTurns(lines);
   assert.equal(turns.length, 1); assert.equal(turns[0].items.length, 1);
   assert.equal(turns[0].answer, 'second code');
+});
+
+
+test('CLI images become durable attachments before reverse import', async () => {
+  const turns = [{ ...completed, items: [{ type: 'UserMessage', id: 'image', content: [{ type: 'image', url: 'data:image/png;base64,iVBORw0KGgo=' }] }] }];
+  const saved = [];
+  await hydrateNativeImages(turns, { async saveImage(input) { saved.push(input.data); return { attachmentId: 'image', name: 'fixture.png', mediaType: 'image/png', width: 1, height: 1, bytes: 3 }; } });
+  const session = seed();
+  importTurns(session, [{ id: 'original' }, ...turns]);
+  assert.equal(saved[0].subarray(1,4).toString(), "PNG");
+  assert.equal(session.deriveMessages()[0].content[0].type, 'image');
+});
+
+
+test('native review outer/inner turn IDs keep a completed reverse-import boundary', () => {
+  const payloads = [
+    {type:'item_completed',turn_id:'outer',item:{type:'EnteredReviewMode'}},
+    {type:'task_started',turn_id:'inner'},
+    {type:'item_completed',turn_id:'inner',item:{type:'Reasoning'}},
+    {type:'item_completed',turn_id:'outer',item:{type:'ExitedReviewMode',review_output:{findings:[]}}},
+    {type:'task_complete',turn_id:'outer',last_agent_message:null},
+    {type:'task_started',turn_id:'next'},
+    {type:'task_complete',turn_id:'next',last_agent_message:'continued'},
+  ];
+  const turns = parseTurns(payloads.map(payload=>JSON.stringify({type:'event_msg',payload})).join('\n')+'\n');
+  assert.deepEqual(turns.map(t=>[t.id,t.status]), [['outer','completed'],['next','completed']]);
+  assert.equal(turns[0].items.length,3);
 });

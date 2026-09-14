@@ -21,3 +21,5 @@ The [personal installer](../../../../personal/install.mjs) enables the existing 
 ## Consequences
 
 A cloned checkout can recreate the profile after a local build. The compiled Session compatibility patch must be reapplied after builds. Native reverse-import compatibility remains tied to the tested DSH loop version. Installer and plugin tests run locally; disabling Actions intentionally removes automated checks from pushes.
+
+Version 0.4 adds native command dispatch, effective DSH permission resolution, durable attachment paths, question batching and free-text encoding, native context notices, and CLI policy flags. A late usage notification from a resumed turn must not capture a newly registered compact operation; only turn-start may bind an operation without a response turn ID. Native compaction preserves the DSH transcript and updates the existing native checkpoint. Tests must use the functional-test workspace and distinguish real provider checks from deterministic protocol fixtures.

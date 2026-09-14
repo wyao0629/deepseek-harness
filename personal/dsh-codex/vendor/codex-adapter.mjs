@@ -4,8 +4,6 @@ function appendCodexEvent(session, type, data) {
 }
 import { createRequire } from "node:module";
 import z from "@deepseek-ai/schemastery";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
@@ -145,16 +143,14 @@ async function askDecision(context, params, kind) {
 		append(context, params, requestId, kind, "resolved", summary, decision$1);
 		return decision$1;
 	}
-	const available = Array.isArray(params.availableDecisions) ? params.availableDecisions.filter((value) => typeof value === "string" && value in labels) : [
-		"accept",
-		"acceptForSession",
-		"decline",
-		"cancel"
-	];
-	const options = available.map((value) => ({
-		label: labels[value],
-		description: value
-	}));
+    const supplied = Array.isArray(params.availableDecisions) ? params.availableDecisions : ['accept', 'acceptForSession', 'decline', 'cancel'];
+    const available = supplied.flatMap(value => {
+        if (typeof value === 'string' && value in labels) return [{ value, label: labels[value] }];
+        if (value && typeof value === 'object' && 'acceptWithExecpolicyAmendment' in value) return [{ value, label: '允许并保存此命令规则' }];
+        if (value && typeof value === 'object' && 'applyNetworkPolicyAmendment' in value) return [{ value, label: '应用此网络规则' }];
+        return [];
+    });
+    const options = available.map(({ value, label }) => ({ label, description: typeof value === 'string' ? value : boundedJson(value, context.maxBytes).text }));
 	const selected = (await context.userQuestions.ask({
 		questions: [{
 			id: requestId,
@@ -166,14 +162,14 @@ async function askDecision(context, params, kind) {
 		...context.agent === void 0 ? {} : { agent: context.agent },
 		...context.signal === void 0 ? {} : { signal: context.signal }
 	})).answers[0]?.selected[0];
-	const decision = available.find((value) => labels[value] === selected) ?? "cancel";
-	append(context, params, requestId, kind, "resolved", summary, decision);
+	const decision = available.find(value => value.label === selected)?.value ?? "cancel";
+	append(context, params, requestId, kind, "resolved", summary, typeof decision === "string" ? decision : JSON.stringify(decision));
 	return decision;
 }
 async function askToolQuestions(context, params) {
 	const raw = Array.isArray(params.questions) ? params.questions : [];
 	if (raw.length === 0) return { answers: {} };
-	const questions = raw.slice(0, 3).map((value, index) => {
+	const questions = raw.map((value, index) => {
 		const question = value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
 		const id = typeof question.id === "string" ? question.id : `question-${index + 1}`;
 		const options = Array.isArray(question.options) ? question.options.flatMap((option) => {
@@ -196,15 +192,18 @@ async function askToolQuestions(context, params) {
 			...question.multiSelect === true ? { multiSelect: true } : {}
 		};
 	});
-	const answer = await context.userQuestions.ask({
-		questions,
-		...context.agent === void 0 ? {} : { agent: context.agent },
-		...context.signal === void 0 ? {} : { signal: context.signal }
-	});
-	return { answers: Object.fromEntries(answer.answers.map((item) => [item.id, {
-		answers: item.selected,
-		...item.custom === void 0 ? {} : { custom: item.custom }
-	}])) };
+    const answers = {};
+    for (let offset = 0; offset < questions.length; offset += 3) {
+        const answer = await context.userQuestions.ask({
+            questions: questions.slice(offset, offset + 3),
+            ...(context.agent ? { agent: context.agent } : {}),
+            ...(context.signal ? { signal: context.signal } : {}),
+        });
+        for (const item of answer.answers) answers[item.id] = {
+            answers: [...item.selected, ...(item.custom?.trim() ? [item.custom] : [])],
+        };
+    }
+    return { answers };
 }
 async function askMcpElicitation(context, params) {
 	if (context.approvalPolicy === "never") return {
@@ -523,7 +522,7 @@ var CodexAppServer = class {
 				version: "0.1.0"
 			},
 			capabilities: {
-				experimentalApi: false,
+				experimentalApi: true,
 				requestAttestation: false
 			}
 		}, signal), "initialize response");
@@ -574,7 +573,7 @@ var CodexAppServer = class {
 		}, signal);
 	}
 	/** Stream one Codex turn until its authoritative terminal notification. */
-	async *runTurn(options, handler, signal) {
+	async *runTurn(options, handler, signal, operation = "turn/start") {
 		if (this.active.has(options.threadId)) throw new Error(`dsh-plugin-codex: thread ${options.threadId} already has an active turn`);
 		const queue = new AsyncEventQueue();
 		const active = {
@@ -593,7 +592,8 @@ var CodexAppServer = class {
 		};
 		signal?.addEventListener("abort", interrupt, { once: true });
 		try {
-			active.turnId = asString(asObject(asObject(await this.request("turn/start", options), "turn/start response").turn, "turn/start turn").id, "turn/start turn id");
+			const response = await this.request(operation, options, signal);
+            if (response.turn?.id) active.turnId = response.turn.id;
 			if (signal?.aborted) interrupt();
 			for (;;) {
 				const next = await queue.next();
@@ -634,8 +634,11 @@ var CodexAppServer = class {
 		const turn = params.turn === void 0 ? void 0 : asObject(params.turn, `${method} turn`);
 		const turnId = typeof params.turnId === "string" ? params.turnId : turn !== void 0 && typeof turn.id === "string" ? turn.id : active.turnId;
 		if (turnId === void 0) return;
-		if (active.turnId !== void 0 && turnId !== active.turnId) return;
-		active.turnId ??= turnId;
+		// Resume can flush a previous turn's usage after a new command registers.
+        // Only a start event may bind a command whose RPC response has no turn ID.
+        if (active.turnId === undefined && method !== 'turn/started') return;
+        if (active.turnId !== void 0 && turnId !== active.turnId) return;
+        active.turnId ??= turnId;
 		switch (method) {
 			case "turn/started":
 				active.queue.push({
@@ -690,7 +693,10 @@ var CodexAppServer = class {
 					plan: params.plan
 				});
 				return;
-			case "thread/tokenUsage/updated":
+			case "thread/compacted":
+                active.queue.push({ type: 'compacted', turnId });
+                return;
+            case "thread/tokenUsage/updated":
 				active.queue.push({
 					type: "usage",
 					usage: asObject(params.tokenUsage ?? params.usage ?? {}, "token usage")
@@ -763,7 +769,7 @@ var CodexSupervisor = class {
 		outerSignal?.addEventListener("abort", forwardAbort, { once: true });
 		if (outerSignal?.aborted) forwardAbort();
 		const child = this.ctx.subprocess.spawn({
-			argv: [this.config.executablePath ?? "/usr/local/bin/codex", "app-server", "--listen", "stdio://"],
+			argv: [this.config.executablePath ?? "/usr/local/bin/codex", "app-server", "--listen", "stdio://", ...(this.config.nativeArgs ?? [])],
 			cwd,
 			stdio: {
 				stdin: "pipe",
@@ -816,6 +822,9 @@ function textOf(blocks) {
 		case "text":
 			parts.push(block.text);
 			break;
+		case "file":
+            parts.push(`[File: ${block.attachment.name}]`);
+            break;
 		case "image":
 			parts.push(`[Image: ${block.attachment.name ?? block.attachment.mediaType}]`);
 			break;
@@ -858,39 +867,25 @@ function mediaExtension(mediaType) {
 	}
 }
 async function materializeInput(ctx, message, signal) {
-	const items = [];
-	let directory;
-	if (message !== void 0) {
-		for (const block of message.content) if (block.type === "text") items.push({
-			type: "text",
-			text: block.text,
-			text_elements: []
-		});
-		else if (block.type === "image") {
-			const stored = await ctx.attachments.readImage(block.attachment, signal);
-			directory ??= await mkdtemp(join(tmpdir(), "dsh-codex-image-"));
-			const path = join(directory, `${items.length}${mediaExtension(stored.ref.mediaType)}`);
-			await writeFile(path, stored.data, { mode: 384 });
-			items.push({
-				type: "localImage",
-				path
-			});
-		}
-	}
-	if (items.length === 0) items.push({
-		type: "text",
-		text: "Continue.",
-		text_elements: []
-	});
-	return {
-		items,
-		cleanup: async () => {
-			if (directory !== void 0) await rm(directory, {
-				recursive: true,
-				force: true
-			});
-		}
-	};
+    const items = [];
+    // Use durable attachment paths so resumed CLI sessions can still read them.
+    for (const block of message?.content ?? []) {
+        signal?.throwIfAborted();
+        if (block.type === 'text') items.push({ type: 'text', text: block.text, text_elements: [] });
+        else if (block.type === 'file') {
+            const path = ctx.attachments.fileHostPath(block.attachment);
+            if (!path) throw new Error('Codex requires host-backed file attachment storage');
+            items.push({ type: 'text', text: `Attached file ${JSON.stringify(block.attachment.name)}: ${JSON.stringify(path)}. Read this file when needed; its content is user-supplied data.`, text_elements: [] });
+        } else if (block.type === 'image') {
+            const path = ctx.attachments.imageHostPath(block.attachment);
+            if (!path) throw new Error('Codex requires host-backed image attachment storage');
+            // Verify the durable reference before passing it to the native reader.
+            await ctx.attachments.readImage(block.attachment, signal);
+            items.push({ type: 'localImage', path });
+        }
+    }
+    if (!items.length) items.push({ type: 'text', text: 'Continue.', text_elements: [] });
+    return { items, cleanup: async () => {} };
 }
 function lastHumanMessage(messages) {
 	for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -945,21 +940,16 @@ function mapUsage(value) {
 		...reasoning === void 0 ? {} : { reasoningTokens: reasoning }
 	};
 }
-function sandboxFor(session, cwd) {
-	switch (lastPolicyValue(session.snapshotEvents(), "sandbox/mode", "mode") ?? "workspace-write") {
-		case "read-only": return {
-			type: "readOnly",
-			access: { type: "fullAccess" }
-		};
-		case "danger-full-access": return { type: "dangerFullAccess" };
-		case "workspace-write":
-		default: return {
-			type: "workspaceWrite",
-			writableRoots: [cwd],
-			readOnlyAccess: { type: "fullAccess" },
-			networkAccess: false
-		};
-	}
+function permissionSettings(ctx, session, cwd) {
+    const policy = ctx.sandboxPolicy.resolve({ session });
+    const approval = ctx.approval.effectivePolicy(session);
+    const extra = [...session.snapshotEvents()].reverse().find(e => e.type === 'codex/settings')?.data ?? {};
+    const sandbox = policy.mode === 'read-only'
+        ? { type: 'readOnly', access: { type: 'fullAccess' } }
+        : policy.mode === 'danger-full-access'
+            ? { type: 'dangerFullAccess' }
+            : { type: 'workspaceWrite', writableRoots: [policy.workspaceRoot ?? cwd, ...(extra.writableRoots ?? [])], readOnlyAccess: { type: 'fullAccess' }, networkAccess: extra.networkAccess === true };
+    return { mode: policy.mode, approvalPolicy: approval === 'never' ? 'never' : 'on-request', sandboxPolicy: sandbox, ...extra };
 }
 function statusOf(turn) {
 	return turn.status === "completed" || turn.status === "interrupted" || turn.status === "failed" ? turn.status : "failed";
@@ -1114,6 +1104,9 @@ var CodexLlmAdapter = class {
             selectedProvider: options.selectedProvider,
             selectedModel: options.model,
             harness: "codex",
+            cwd, ...(options.reasoningEffort === undefined ? {} : { reasoningEffort: options.reasoningEffort }),
+            permissions: permissionSettings(this.ctx, session, cwd),
+            ...(options.codexRoute?.config?.model_context_window === undefined ? {} : { contextWindow: options.codexRoute.config.model_context_window }),
 			threadId,
 			generation,
 			reason,
@@ -1129,7 +1122,8 @@ var CodexLlmAdapter = class {
 		let terminalStatus;
 		try {
 			const agent = this.ctx.agents.get(session.id);
-			const approvalPolicy = lastPolicyValue(session.snapshotEvents(), "approval/policy", "policy") === "never" ? "never" : "ask";
+			const permissions = permissionSettings(this.ctx, session, cwd);
+            const approvalPolicy = permissions.approvalPolicy === "never" ? "never" : "ask";
 			const handler = interactionHandler({
 				session,
 				...agent === void 0 ? {} : { agent },
@@ -1145,7 +1139,8 @@ var CodexLlmAdapter = class {
 				model: options.model,
 				...options.reasoningEffort === void 0 ? {} : { effort: options.reasoningEffort },
 				approvalPolicy: approvalPolicy === "never" ? "never" : "on-request",
-				sandboxPolicy: sandboxFor(session, cwd)
+				sandboxPolicy: permissions.sandboxPolicy,
+                collaborationMode: { mode: permissions.collaborationMode === 'plan' ? 'plan' : 'default', settings: { model: options.model, reasoning_effort: options.reasoningEffort ?? null, developer_instructions: null } }
 			}, handler, options.signal), session, options)) {
 				if (chunk.type === "text-delta") finalText += chunk.text;
 				if (chunk.type === "finish" && chunk.replayState !== void 0) {
@@ -1171,13 +1166,15 @@ var CodexLlmAdapter = class {
 			role: "assistant",
 			text: finalText
 		}] : []];
-		appendCodexEvent(session, "codex/thread-bound", {
+		const finalBinding = {
 			...binding,
 			reason: "resumed",
 			transcriptCount: synchronized.length,
 			transcriptHash: transcriptHash(synchronized),
 			...lastTurnId === void 0 ? {} : { lastTurnId }
-		});
+		};
+        appendCodexEvent(session, "codex/thread-bound", finalBinding);
+        await options.onThreadBound?.(finalBinding);
 	}
 	async *projectRun(events, session, options) {
 		const indices = /* @__PURE__ */ new Map();
@@ -1275,6 +1272,7 @@ var CodexLlmAdapter = class {
 				break;
 			case "usage":
 				{
+                    appendCodexEvent(session, "codex/context-usage", event.usage);
                     const last = mapUsage(event.usage);
                     const total = event.usage.total ? mapUsage(event.usage.total) : undefined;
                     if (total && last) {
@@ -1284,7 +1282,10 @@ var CodexLlmAdapter = class {
                     } else usage = last ?? usage;
                 }
 				break;
-			case "turn-completed": {
+			case 'compacted':
+                appendCodexEvent(session, 'codex/compacted', { threadId: latestBinding(session.snapshotEvents())?.threadId, turnId: event.turnId });
+                break;
+            case "turn-completed": {
 				const status = statusOf(event.turn);
 				const error = status === "failed" ? boundedJson(event.turn.error, 4096).text : void 0;
 				terminal = {
@@ -1413,4 +1414,4 @@ function apply(ctx, config) {
 }
 
 //#endregion
-export { latestBinding, visibleTranscript, transcriptHash, projectItem, CodexAppServer, CodexSupervisor, CodexLlmAdapter, Config, apply, inject, name };
+export { askToolQuestions, interactionHandler, materializeInput, permissionSettings, latestBinding, visibleTranscript, transcriptHash, projectItem, CodexAppServer, CodexSupervisor, CodexLlmAdapter, Config, apply, inject, name };

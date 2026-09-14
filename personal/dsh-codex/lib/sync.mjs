@@ -8,18 +8,54 @@ import { encodeRoute } from './route.mjs';
 // Read completed native turns, never infer human prompts from injected context.
 export function parseTurns(text) {
   const turns = new Map();
+  const reviewAliases = new Map();
+  let activeReview;
   for (const line of text.split('\n').slice(0, -1)) {
     const row = JSON.parse(line);
     if (row.type !== 'event_msg') continue;
     const p = row.payload;
-    if (p.type === 'task_started') turns.set(p.turn_id, { id: p.turn_id, items: [], status: 'running' });
-    const turn = turns.get(p.turn_id);
+    if (p.type === 'item_completed' && p.item?.type === 'EnteredReviewMode') {
+      activeReview = p.turn_id;
+      turns.set(activeReview, { id: activeReview, items: [], status: 'running' });
+    }
+    if (p.type === 'task_started') {
+      if (activeReview && activeReview !== p.turn_id) reviewAliases.set(p.turn_id, activeReview);
+      else if (!turns.has(p.turn_id)) turns.set(p.turn_id, { id: p.turn_id, items: [], status: 'running' });
+    }
+    const turn = turns.get(reviewAliases.get(p.turn_id) ?? p.turn_id);
     if (!turn) continue;
-    if (p.type === 'item_completed') turn.items.push(p.item);
-    if (p.type === 'task_complete') { turn.status = 'completed'; turn.answer = p.last_agent_message; }
+    if (p.type === 'item_completed') { turn.items.push(p.item); if (p.item?.type === 'ExitedReviewMode') turn.answer = JSON.stringify(p.item.review_output); }
+    if (p.type === 'task_complete') { turn.status = 'completed'; turn.answer = p.last_agent_message ?? turn.answer; if (p.turn_id === activeReview) activeReview = undefined; }
     if (p.type === 'turn_aborted') turn.status = 'interrupted';
   }
   return [...turns.values()];
+}
+
+export async function hydrateNativeImages(turns, attachments) {
+  for (const turn of turns) for (const item of turn.items ?? []) {
+    if (item.type !== 'UserMessage') continue;
+    const content = [];
+    for (const block of item.content ?? []) {
+      const kind = block.type.toLowerCase().replaceAll('_', '');
+      if (kind === 'text') content.push({ type: 'text', text: block.text });
+      else if (kind === 'localimage' || kind === 'image') {
+        let data, name, mediaType;
+        if (kind === 'localimage') { data = await readFile(block.path); name = block.path.split(/[\\/]/).at(-1); }
+        else if (/^data:image\/[^;]+;base64,/.test(block.url ?? '')) data = Buffer.from(block.url.split(',')[1], 'base64');
+        if (data) {
+          mediaType = data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ? 'image/png'
+            : data[0] === 255 && data[1] === 216 ? 'image/jpeg'
+            : data.subarray(0, 3).toString() === 'GIF' ? 'image/gif'
+            : data.subarray(8, 12).toString() === 'WEBP' ? 'image/webp' : undefined;
+          if (!mediaType) throw new Error('Unsupported native image bytes');
+          content.push({ type: 'image', attachment: await attachments.saveImage({ data, mediaType, ...(name ? { name } : {}) }) });
+        }
+        else content.push({ type: 'text', text: '[Codex image: external URL, preview unavailable]' });
+      }
+    }
+    item.dshContent = content;
+  }
+  return turns;
 }
 
 const textOf = item => (item.content ?? []).filter(x => x.type.toLowerCase() === 'text').map(x => x.text).join('\n');
@@ -38,14 +74,21 @@ export function importTurns(session, turns) {
     const number = Math.max(0, ...events.filter(e => e.type === 'turn/start').map(e => e.data.turn)) + 1;
     const existingIds = new Set(session.deriveMessages().map(m => m.id));
     const userItems = turn.items.filter(i => i.type === 'UserMessage');
-    if (!userItems.length) break;
+    if (!userItems.length && !turn.answer) {
+      binding = { ...binding, lastTurnId: turn.id };
+      event(session, 'codex/thread-bound', binding);
+      if (turn.items.some(i => /compaction/i.test(i.type))) event(session, 'codex/compacted', { threadId: binding.threadId, turnId: turn.id, importedFrom: 'codex-cli' });
+      count++;
+      continue;
+    }
     session.append('turn/start', { turn: number });
     session.append('step/start', { turn: number, step: 1 });
     for (const item of userItems) {
       const id = messageId(binding.threadId, turn.id, item.id);
       const text = textOf(item);
-      if (text && !existingIds.has(id)) session.append('user/message', {
-        id, role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text }],
+      const content = item.dshContent ?? [{ type: 'text', text }];
+      if (content.length && !existingIds.has(id)) session.append('user/message', {
+        id, role: 'user', source: { kind: 'user' }, content,
       }, { surfaceOp: 'append' });
     }
     event(session, 'codex/turn', { threadId: binding.threadId, turnId: turn.id, phase: 'started', status: 'inProgress', model: binding.selectedModel });
@@ -105,6 +148,9 @@ export function startSync(ctx, busy, config = {}) {
       const latest = latestBinding(session.snapshotEvents());
       if (latest?.threadId !== b.threadId || !latest.lastTurnId) continue;
       const turns = parseTurns(await readFile(file, 'utf8'));
+      const boundary = turns.findIndex(t => t.id === latest.lastTurnId);
+      if (boundary < 0) continue;
+      await hydrateNativeImages(turns.slice(boundary + 1), ctx.attachments);
       const agent = ctx.agents.get(b.sessionId);
       if (!agent || agent.status !== 'idle') continue;
       // Hold the public maintenance reservation so queued DSH input cannot interleave.

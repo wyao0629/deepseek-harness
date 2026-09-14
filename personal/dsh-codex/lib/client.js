@@ -118,6 +118,19 @@ const contextDefinition = {
 		data: context.state
 	}
 };
+const usageDefinition = {
+    kind: 'codex-usage', target: 'chat',
+    match: event => event.type === 'codex/context-usage' || event.type === 'codex/compacted' ? { id: String(event.seq), role: 'start' } : null,
+    start: (_context, match) => ({ type: match.event.type, ...match.event.data }),
+    update: context => context.state,
+    buildViewNode: context => !context.start || !context.state ? null : ({ key: context.key, kind: 'codex-usage', id: context.id, target: 'chat', anchorSeq: context.start.event.seq, location: context.start.location, visibility: 'visible', data: context.state }),
+};
+function UsageNotice({ node }) {
+    const d = node.data;
+    const used = d.last?.totalTokens ?? d.last?.inputTokens;
+    const limit = d.modelContextWindow;
+    return react_jsx_runtime.jsx('small', { 'data-codex-usage': true, children: d.type === 'codex/compacted' ? 'Codex 原生上下文已压缩（网页历史仍保留）' : `Codex 原生上下文：${used ?? '?'} / ${limit ?? '?'} tokens；累计 ${d.total?.totalTokens ?? '?'} tokens` });
+}
 function statusLabel(status) {
 	switch (status) {
 		case "inProgress": return "运行中";
@@ -169,6 +182,8 @@ function ContextNotice({ node }) {
 const inject = ["uiConversation", "slots"];
 /** Register durable Codex activity and context nodes. */
 function apply(ctx) {
+	ctx.uiConversation.events.register(usageDefinition);
+    ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'codex-usage' }, UsageNotice));
 	ctx.uiConversation.events.register(runDefinition);
 	ctx.uiConversation.events.register(contextDefinition);
 	ctx.slots.inject("conversation.chat.node", () => ctx.slots.register({

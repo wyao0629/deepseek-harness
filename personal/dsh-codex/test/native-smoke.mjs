@@ -12,7 +12,7 @@ const testRoot = process.env.DSH_CODEX_TEST_ROOT ?? join(process.cwd(), '功能�
 await mkdir(testRoot, { recursive: true });
 const cwd = await mkdtemp(join(testRoot, 'native-'));
 const home = join(cwd, 'codex-home'); await mkdir(home);
-let calls=0, toolObserved=false;
+let calls=0, toolObserved=false, reviewing=false;
 const ctx={llm:{resolveModelInfo:async()=>({}),async *stream(options){
   calls++; assert.equal(options.provider,'fixture-provider'); assert.equal(options.model,'fixture-non-gpt');
   const result=options.messages.flatMap(m=>m.content).find(b=>b.type==='tool-result' && JSON.stringify(b).includes('DSH_NATIVE_TOOL_OK'));
@@ -23,7 +23,7 @@ const ctx={llm:{resolveModelInfo:async()=>({}),async *stream(options){
     yield {type:'block-end',index:0,block:{type:'tool-call',id:'native_test_call',name:tool.name,arguments:JSON.stringify({cmd:'printf DSH_NATIVE_TOOL_OK',max_output_tokens:100})}};
     yield {type:'finish',reason:{kind:'tool-calls'}};
   }else{
-    yield {type:'text-delta',index:0,text:toolObserved?'NATIVE_CODEX_OK':'NO_TOOL_RESULT'};
+    yield {type:'text-delta',index:0,text:reviewing ? JSON.stringify({findings:[],overall_correctness:'patch is correct',overall_explanation:'Fixture has no issues.',overall_confidence_score:1}) : toolObserved?'NATIVE_CODEX_OK':'NO_TOOL_RESULT'};
     yield {type:'finish',reason:{kind:'stop'}};
   }
 }}};
@@ -59,13 +59,19 @@ try{
     assert.equal(opts?.ignorable,true,'External events must survive DSH persistence reads');
     events.push({type,data,seq:events.length,time:Date.now(),ignorable:true});
   }};
-  const adapter=new CodexLlmAdapter({sessions:{get:()=>session},agents:{get:()=>undefined},attachments:{}},{get:async()=>server},{commandOutputLimitBytes:262144});
+  const adapter=new CodexLlmAdapter({sessions:{get:()=>session},agents:{get:()=>undefined},attachments:{},sandboxPolicy:{resolve:()=>({mode:"danger-full-access",workspaceRoot:cwd})},approval:{effectivePolicy:()=>"never"}},{get:async()=>server},{commandOutputLimitBytes:262144});
   for await(const chunk of adapter.stream({provider:'codex',model:'fixture-non-gpt',selectedProvider:'fixture-provider',codexRoute:route,sessionId:session.id,
     messages:[{id:'fixture-message',role:'user',source:{kind:'user'},content:[{type:'text',text:'Reply NATIVE_CODEX_OK'}]}],signal})) {
     if(chunk.type==='finish') assert.equal(chunk.reason.kind,'stop');
   }
   assert.ok(events.some(e=>e.type==='codex/thread-bound'));
   assert.ok(events.some(e=>e.type==='codex/turn'&&e.data.status==='completed'));
-  console.log(JSON.stringify({nativeThread:tid,persisted:true,restartedAndResumed:true,turnCount:read.thread.turns.length,providerCalls:calls,nativeToolExecuted:toolObserved,testHome:home}));
+  reviewing = true;
+  let reviewStatus;
+  for await (const event of server.runTurn({ threadId: tid, target: { type: 'uncommittedChanges' }, delivery: 'inline' }, async () => ({decision:'decline'}), signal, 'review/start')) {
+    if (event.type === 'turn-completed') reviewStatus = event.turn.status;
+  }
+  assert.equal(reviewStatus, 'completed');
+  console.log(JSON.stringify({nativeReviewCompleted:true,nativeThread:tid,persisted:true,restartedAndResumed:true,turnCount:read.thread.turns.length,providerCalls:calls,nativeToolExecuted:toolObserved,testHome:home}));
 }catch(e){console.error(e.message);console.error(errors.slice(-3000));process.exitCode=1}
 finally{server.close();child.kill();bridge.closeAllConnections();await new Promise(r=>bridge.close(r));}
