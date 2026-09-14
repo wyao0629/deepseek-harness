@@ -1,0 +1,32 @@
+{
+  "name": "dsh-codex",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Run the DSH-selected model inside native Codex, with linked session history",
+  "license": "MIT",
+  "exports": {
+    ".": "./lib/host.mjs",
+    "./preset-route": "./lib/preset-route.mjs",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  }
+}
