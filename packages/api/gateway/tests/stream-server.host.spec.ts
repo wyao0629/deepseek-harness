@@ -17,6 +17,7 @@ interface RunningMux {
 const running = new Set<RunningMux>()
 
 afterEach(async () => {
+  vi.restoreAllMocks()
   await Promise.all([...running].map(async (entry) => {
     running.delete(entry)
     await entry.mux.close().catch(() => undefined)
@@ -54,6 +55,7 @@ describe('Remote stream mux server carrier lifecycle', () => {
     const entry = await startMux(async (_endpoint, _payload, signal) => waitForAbort(signal), 20)
     const client = await connect(entry.url)
     const serverSocket = acceptedSocket(entry.mux)
+    const diagnostic = vi.spyOn(console, 'warn').mockImplementation(() => {})
     serverSocket.removeAllListeners('pong')
     const terminated = vi.spyOn(serverSocket, 'terminate')
     const closed = once(client, 'close')
@@ -63,6 +65,15 @@ describe('Remote stream mux server carrier lifecycle', () => {
     expect(terminated).not.toHaveBeenCalled()
     await vi.waitFor(() => { expect(terminated).toHaveBeenCalledOnce() })
     await closed
+    try {
+      expect(diagnostic).toHaveBeenCalledWith(expect.stringContaining('"reason":"heartbeat-timeout"'))
+      const record = JSON.parse(String(diagnostic.mock.calls[0]?.[0])) as Record<string, unknown>
+      expect(record.missedHeartbeats).toBe(2)
+      expect(record.heartbeatIntervalMs).toBe(20)
+      expect(record).not.toHaveProperty('payload')
+    } finally {
+      diagnostic.mockRestore()
+    }
   })
 
   it('keeps the socket when a delayed Pong arrives before the final check', async () => {

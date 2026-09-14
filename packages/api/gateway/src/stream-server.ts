@@ -26,6 +26,7 @@ export class RemoteStreamMuxServer {
   private readonly server = new WebSocketServer({ noServer: true })
   private readonly connections = new Set<Promise<void>>()
   private readonly missedHeartbeats = new WeakMap<WebSocket, number>()
+  private readonly terminationReasons = new WeakMap<WebSocket, string>()
   private heartbeatTimer: NodeJS.Timeout | undefined
 
   /**
@@ -48,7 +49,28 @@ export class RemoteStreamMuxServer {
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     this.server.handleUpgrade(req, socket, head, (websocket) => {
       this.missedHeartbeats.set(websocket, 0)
-      websocket.on('pong', () => { this.missedHeartbeats.set(websocket, 0) })
+      const openedAt = Date.now()
+      let lastPongAt = openedAt
+      let errorCode: string | undefined
+      websocket.on('pong', () => {
+        lastPongAt = Date.now()
+        this.missedHeartbeats.set(websocket, 0)
+      })
+      websocket.on('error', (error: NodeJS.ErrnoException) => { errorCode = error.code })
+      websocket.once('close', (code) => {
+        if (code === 1000 || code === 1001) return
+        console.warn(JSON.stringify({
+          event: 'dsh.remote-mux.closed',
+          reason: this.terminationReasons.get(websocket) ?? 'peer-or-transport-close',
+          code,
+          errorCode,
+          ageMs: Date.now() - openedAt,
+          pongAgeMs: Date.now() - lastPongAt,
+          missedHeartbeats: this.missedHeartbeats.get(websocket),
+          heartbeatIntervalMs: this.heartbeatIntervalMs,
+          bufferedBytes: websocket.bufferedAmount,
+        }))
+      })
       this.startHeartbeat()
       const connection = new RemoteStreamMuxConnection(websocket, this.open, this.failure)
       const done = connection.run()
@@ -61,7 +83,10 @@ export class RemoteStreamMuxServer {
   async close(): Promise<void> {
     clearInterval(this.heartbeatTimer)
     this.heartbeatTimer = undefined
-    for (const socket of this.server.clients) socket.terminate()
+    for (const socket of this.server.clients) {
+      this.terminationReasons.set(socket, 'server-shutdown')
+      socket.terminate()
+    }
     const closed = Promise.withResolvers<void>()
     this.server.close((error) => {
       if (error === undefined) closed.resolve()
@@ -81,6 +106,7 @@ export class RemoteStreamMuxServer {
         if (missed >= MAX_MISSED_HEARTBEATS) {
           setImmediate(() => {
             if ((this.missedHeartbeats.get(socket) as number) >= MAX_MISSED_HEARTBEATS) {
+              this.terminationReasons.set(socket, 'heartbeat-timeout')
               socket.terminate()
             }
           })
