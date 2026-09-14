@@ -201,6 +201,20 @@ describe('registration', () => {
 })
 
 describe('candidates', () => {
+  it('native Harness commands survive client collisions and own menu, space, and cold Enter', async () => {
+    const native = { name: 'theme', definitionId: CommandDefinitionId('native-harness/kimi/theme'), description: 'Native theme', input: { hint: 'native args' } }
+    const { command, source } = await bench({ commands: () => Promise.resolve({ commands: [native] }) })
+    const run = vi.fn()
+    command.register({ name: 'theme', available: () => true, ui: { kind:'action',run } })
+    command.decorate({ name: 'theme', available: () => true, ui: { kind:'action',run } })
+    const cold = await source.matchEnter!(proj('s1'), '/theme', new AbortController().signal, { attachments:0 })
+    expect(cold).toHaveProperty('claim')
+    expect((await source.candidates(proj('s1'), req(''))).map(c => c.name)).toEqual(['theme'])
+    expect(menuPick(source, 'theme', proj('s1'))).toHaveProperty('claim')
+    expect(source.matchSpace!(proj('s1'), '/theme')).toHaveProperty('claim')
+    expect(run).not.toHaveBeenCalled()
+  })
+
   it('does not fetch Agent-bound commands for an addressed child', async () => {
     const b = await bench({ addressed: sid('child') })
     await expect(b.warm(proj('child'))).resolves.toBeUndefined()
@@ -692,13 +706,13 @@ describe('matchEnter (enter column)', () => {
     expect(executeCalls).toEqual([])
   })
 
-  it('contribution: bare token opens the popup without touching the directory; args → undefined', async () => {
+  it('contribution: bare token checks host ownership before opening the popup; args → undefined', async () => {
     const { command, source, mint, listCalls } = await bench()
     command.register(themeContribution())
     const scope = mint('s1')
     await expect(source.matchEnter!(proj('s1'), '/theme', signal(), { attachments: 0 })).resolves.toBe('handled')
     expect(command.popupFor(scope.ctx).state.getSnapshot().open).toBe(true)
-    expect(listCalls).toEqual([]) // contribution short-circuits ahead of ensureReady
+    expect(listCalls).toEqual([{ sessionId: sid('s1') }]) // check native ownership before dispatch
     await expect(source.matchEnter!(proj('s1'), '/theme dark', signal(), { attachments: 0 })).resolves.toBeUndefined()
   })
 

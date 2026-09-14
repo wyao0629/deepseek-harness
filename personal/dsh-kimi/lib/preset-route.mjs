@@ -1,11 +1,12 @@
 import { encodeRoute, decodeRoute } from '../../dsh-codex/lib/route.mjs';
 import { createScope } from '@deepseek-ai/dsh-scope';
+import { commandHelp } from './commands.mjs';
 export const name = 'dsh-kimi-preset-route';
 export const inject = ['dshKimi', 'commands'];
 export function apply(ctx) {
   ctx.commands.useNativePalette();
-  for (const command of ['kimi', 'status', 'usage', 'compact', 'plan', 'swarm', 'tasks', 'skills', 'mcp', 'resume', 'model', 'effort']) {
-    ctx.commands.register({ name: command, description: `Kimi · ${command}`, input: { hint: command === 'kimi' ? 'help / model / effort / status' : '参数' },
+  for (const [command, [description, hint]] of Object.entries(commandHelp)) {
+    ctx.commands.register({ name: command, definitionId: 'native-harness/kimi/' + command, description, ...(hint ? {input: { hint }} : {}),
       handler: invocation => ctx.dshKimi.command(invocation, command) });
   }
   const runtime = ctx.dshKimi, scopes = new Map();
@@ -19,7 +20,7 @@ export function apply(ctx) {
         if (![undefined, 'prompt', 'inline', 'flow'].includes(skill.type)) continue;
         const name = 'skill:' + skill.name;
         if (!/^[a-z][a-z0-9_:-]*$/.test(name)) continue;
-        registrations.set(name, scope.ctx.commands.register({ name, description: `Kimi · ${skill.description || skill.name}`, input: { hint: '参数' }, handler: i => runtime.command(i, name) }));
+        registrations.set(name, scope.ctx.commands.register({ name, definitionId: 'native-harness/kimi/' + name, description: `Kimi · ${skill.description || skill.name}`, input: { hint: '参数' }, handler: i => runtime.command(i, name) }));
       }
     };
     if (!runtime.catalogListeners.has(agent.session.id)) runtime.catalogListeners.set(agent.session.id, new Set());

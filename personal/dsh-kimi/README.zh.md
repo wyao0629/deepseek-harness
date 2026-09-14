@@ -29,6 +29,8 @@
 
 Kimi 预设提供 `/status`、`/usage`、`/compact`、`/plan on|off`、`/swarm on|off`、`/tasks`、`/skills`、`/mcp`、`/resume`、`/model <provider> <model> [effort]` 和 `/effort <value>`。建立原生绑定后，支持用户调用的原生技能显示为 `/skill:<name>`。DSH 全局命令保留在 `/dsh <command>` 下，不会覆盖原生命令。
 
+命令菜单包含中文说明和示例，并提供 `/help`、`/version`、`/title` 和 `/goal`。不带参数的 `/plan` 切换原生模式。`/swarm <任务>` 进入 DSH 正常消息队列，并设置原生提示的集群模式，用户消息、流式回答和子 Agent 轨迹均保留在对话内。`/goal <目标>` 使用原生目标参数，支持 status、pause、resume、cancel。这些补充尚不等于完整 TUI 命令适配。空白会话可以直接查询 `/status`，无需预先调用模型。中文预设元数据随包提供在 `preset/kimi` 中。
+
 `/resume` 显示服务器端原生会话 ID。用相同服务器账号接续，在回到 DSH 前退出该 CLI。插件检测 CLI 的活动占用，通过 Kimi 可逆的归档/恢复生命周期刷新空闲会话缓存，并用原生轮次和提问 ID 导入完成的轮次，不将消息数组位置用作同步游标。原生模型调用依赖桥接，因此 DSH 必须保持运行。
 
 原生问题的选项与自定义文本通过 DSH 问题界面回传。原生权限请求单独转发。文件和图片转换为原生提示内容。原生工具及子 Agent 事件保留在会话轨迹内。事件通道停滞时，插件从原生持久化轨迹恢复文字和工具进度，不重复已输出的文字。展开已完成轮次的“已思考”区域，即可查看 Kimi 运行卡片及 AgentSwarm 子 Agent。

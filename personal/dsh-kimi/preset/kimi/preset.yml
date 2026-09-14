@@ -1,0 +1,3 @@
+name: Kimi
+description: 使用服务器原生 Kimi Code 执行任务与 AgentSwarm 集群；DSH 管理模型密钥、对话、审批及双向会话同步。
+order: 22

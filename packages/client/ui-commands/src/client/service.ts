@@ -209,6 +209,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     for (const contribution of this.live.contributions.values()) {
       if (!contribution.available(session)) continue
       if (seen.has(contribution.name)) {
+        if (this.nativeCommand(session.sessionId, contribution.name)) continue
         throw new Error(`ui-commands: contribution /${contribution.name} collides with a host command`)
       }
       rows.push({
@@ -222,10 +223,15 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     return req.query === '' ? sectionRows(visible, this.t) : rankByName(visible, req.query)
   }
 
+  /** Native presets own their command spelling, including collisions with DSH client pickers. */
+  private nativeCommand(sessionId: SessionId, name: string): boolean {
+    return this.directory.resolve(sessionId, name)?.definitionId?.startsWith('native-harness/') === true
+  }
+
   /** Decision table, menu column: contribution/decorated-host → popup or action; host input → claim; host bare → detached execute. */
   private dispatch(pick: InputTriggerPick): PickOutcome {
     const name = pick.candidate.name
-    const contribution = this.live.contributions.get(name)
+    const contribution = this.nativeCommand(pick.session.sessionId, name) ? undefined : this.live.contributions.get(name)
     if (contribution !== undefined && contribution.available(pick.session)) {
       this.invoke(name, contribution.ui, pick.session, { via: 'menu', span: pick.span })
       return 'handled'
@@ -235,7 +241,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     // A decoration replaces the HOST row's bare invocation with its popup or
     // action; it decorates only a resolvable host command (checked above),
     // never manufactures one, and never touches the argument claim below.
-    const decoration = this.live.decorations.get(name)
+    const decoration = this.nativeCommand(pick.session.sessionId, name) ? undefined : this.live.decorations.get(name)
     if (decoration !== undefined && decoration.available(pick.session)) {
       this.invoke(name, decoration.ui, pick.session, { via: 'menu', span: pick.span })
       return 'handled'
@@ -251,7 +257,8 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
   /** Decision table, space column: hot-key sync check; only host leadingInput claims. */
   private matchSpace(session: ClientSessionContext, token: string): PickOutcome {
     if (!token.startsWith('/')) return undefined
-    if (this.live.contributions.has(token.slice(1))) return undefined // popup and action kinds never claim on space
+    // Popup and action kinds never claim on space unless the native preset owns the name.
+    if (this.live.contributions.has(token.slice(1)) && !this.nativeCommand(session.sessionId, token.slice(1))) return undefined
     const desc = this.directory.resolve(session.sessionId, token.slice(1))
     if (desc === undefined || desc.input === undefined) return undefined
     return { claim: this.leadingClaim(desc, session, token.slice(1)) }
@@ -286,10 +293,11 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     const bare = ws === -1
     const typedName = token.slice(1)
     if (typedName === '') return undefined
+    await this.directory.ensureReady(session.sessionId, signal)
     const refuseAttachments = (): never => {
       throw new Error(this.t('notice.attachmentsUnsupported', { command: typedName }))
     }
-    const contribution = this.live.contributions.get(typedName)
+    const contribution = this.nativeCommand(session.sessionId, typedName) ? undefined : this.live.contributions.get(typedName)
     if (contribution !== undefined && contribution.available(session)) {
       if (!bare) return undefined
       if (envelope.attachments > 0 && contribution.ui.kind !== 'action') refuseAttachments()
@@ -304,7 +312,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
     // Bare enter on a decorated host command opens its popup; an argued line
     // never consults the decoration (the claim/detached paths below own it).
     if (bare) {
-      const decoration = this.live.decorations.get(name)
+      const decoration = this.nativeCommand(session.sessionId, name) ? undefined : this.live.decorations.get(name)
       if (decoration !== undefined && decoration.available(session)) {
         if (envelope.attachments > 0 && decoration.ui.kind !== 'action') refuseAttachments()
         this.invoke(name, decoration.ui, session, { via: 'enter', token })

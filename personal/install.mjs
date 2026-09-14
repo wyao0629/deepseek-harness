@@ -42,7 +42,7 @@ export async function install() {
   run([process.execPath, join(plugin, 'scripts/install-compat.mjs')]);
   const presets = join(dshHome(), '.agent-presets', 'codex');
   const backups = join(dshHome(), 'backups', 'dsh-codex');
-  await writePreset(join(presets, 'preset.yml'), 'name: Codex\norder: 20\n', backups);
+  await writePreset(join(presets, 'preset.yml'), 'name: Codex\ndescription: 使用服务器原生 Codex 执行编码、审查与工具调用；DSH 管理模型密钥、对话、审批及双向会话同步。\norder: 20\n', backups);
   await writePreset(join(presets, 'agent.cordis.yml'), "- id: codex-route\n  name: 'dsh-codex/preset-route'\n", backups);
   run([...cli, '--profile', profile, '--dump-config']);
   console.log(`Installed dsh-codex into ${profile}. Start this checkout with pnpm dsh --profile ${profile}.`);

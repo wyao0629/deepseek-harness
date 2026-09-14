@@ -93,3 +93,5 @@ None.
 </details>
 
 **Runtime invariant:** No companion is published. This browser-side source uses the wire command directory; it emits no Cordis events and owns no cross-plugin mutable state. Its dispatch and cache behavior are asserted by this package's specs.
+
+Native Harness descriptors whose `definitionId` starts with `native-harness/` own their command names within the selected preset. A same-name DSH client contribution or decoration cannot replace them or hide the command list. Menu selection, space completion and Enter submission all use that ownership; Enter loads the host directory before resolving a cold command.

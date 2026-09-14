@@ -1,6 +1,7 @@
 import { GROK_PROVIDER, resolveGrokModelId } from './constants.js'
 import { grokPresenterDefinitions } from './presenters.js'
 import { createScope } from '@deepseek-ai/dsh-scope'
+import { describeCommand } from './command-descriptions.js'
 
 export const name = 'grok-build-preset-route'
 export const inject = ['tools', 'commands', 'dshGrokBuild']
@@ -13,7 +14,7 @@ export function apply(ctx, config = {}) {
   async function execute(invocation, name, args) {
     const id = await attach(invocation.agent)
     const catalog = host.commandCatalogs.get(id) ?? []
-    if (!name || name === 'help') return { kind: 'success', text: catalog.map(c => `/${c.name} — ${c.description}`).join('\n') || 'Grok 尚未发布原生命令列表。' }
+    if (!name || name === 'help') return { kind: 'success', text: catalog.map(c => `/${c.name} — ${describeCommand(c)}`).join('\n') || '原生命令目录正在初始化，请再次输入 /grok help。' }
     if (!catalog.some(c => c.name === name)) return { kind: 'error', text: `当前 Grok 未发布此命令：${name}` }
     return invocation.agent.runMaintenance(async () => {
       let text = ''
@@ -25,6 +26,7 @@ export function apply(ctx, config = {}) {
   }
   async function attach(agent) {
     const id = await host.ensureAgentSession(agent)
+    if (stopped) return id
     if (scopes.has(agent.session.id)) return id
     const scope = createScope(ctx, agent), registrations = new Map()
     const update = catalog => {
@@ -33,8 +35,8 @@ export function apply(ctx, config = {}) {
       registrations.clear()
       for (const command of catalog) {
         if (!/^[a-z][a-z0-9_:-]*$/.test(command.name) || ['dsh','grok'].includes(command.name)) continue
-        registrations.set(command.name, scope.ctx.commands.register({name:command.name, description:`Grok · ${command.description || command.name}`,
-          input:{hint:command.input?.hint || '参数'}, handler: invocation => execute(invocation, command.name, invocation.rawInput.trim())}))
+        registrations.set(command.name, scope.ctx.commands.register({name:command.name, definitionId:'native-harness/grok/'+command.name, description:describeCommand(command),
+          ...(command.input ? {input:{hint:'任务或参数；详见命令说明'}} : {}), handler: invocation => execute(invocation, command.name, invocation.rawInput.trim())}))
       }
     }
     if (!host.commandListeners.has(id)) host.commandListeners.set(id,new Set())
@@ -43,10 +45,11 @@ export function apply(ctx, config = {}) {
     update(host.commandCatalogs.get(id) ?? [])
     return id
   }
-  ctx.commands.register({name:'grok',description:'Grok 原生命令',input:{hint:'help 或原生命令'},handler:invocation=>{
+  ctx.commands.register({name:'grok',definitionId:'native-harness/grok/grok',description:'Grok 原生命令',input:{hint:'help 或原生命令'},handler:invocation=>{
     const [name,...rest]=invocation.rawInput.trim().split(/\s+/)
     return execute(invocation,name,rest.join(' '))
   }})
+  ctx.on('agent/created', ({agent}) => { void attach(agent).catch(error => ctx.logger.warn('Grok 命令目录初始化失败：'+error.message)) })
   ctx.effect(function* () { yield async () => {
     stopped=true
     for (const {scope,id,update} of scopes.values()) {

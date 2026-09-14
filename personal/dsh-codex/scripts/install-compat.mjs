@@ -20,6 +20,12 @@ const commandsReplacement = await readFile(builtCommands, 'utf8');
 const version = async file => JSON.parse(await readFile(join(dirname(file), '..', 'package.json'), 'utf8')).version;
 if (await version(commandsFile) !== await version(builtCommands)) throw Error('Installed DSH commands version differs from this checkout; use a matching build.');
 if (!commandsReplacement.includes('useNativePalette(')) throw Error('Build this checkout before installing native Harness menus.');
+const uiFile = require.resolve('@deepseek-ai/dsh-client-ui-commands/client');
+const builtUi = fileURLToPath(new URL('../../../packages/client/ui-commands/lib/client.js', import.meta.url));
+const uiSource = await readFile(uiFile, 'utf8');
+const uiReplacement = await readFile(builtUi, 'utf8');
+if (await version(uiFile) !== await version(builtUi)) throw Error('Installed DSH command UI version differs from this checkout.');
+if (!uiReplacement.includes('native-harness/')) throw Error('Build the command UI before installing native Harness menus.');
 const backupDir=process.env.DSH_BACKUP_DIR ?? join(dshHome(),'backups','dsh-codex');
 async function replace(target, name, previous, next) {
   if (previous === next) return;
@@ -30,4 +36,5 @@ async function replace(target, name, previous, next) {
 }
 await replace(file, 'dsh-session', source, source.includes(marker) ? source : source.replace(anchor,anchor+'            '+marker+'\n'));
 await replace(commandsFile, 'dsh-commands', commandsSource, commandsReplacement);
+await replace(uiFile, 'dsh-client-ui-commands', uiSource, uiReplacement);
 console.log('DSH event metadata and native Harness menus are installed; restart DSH if it is running.');

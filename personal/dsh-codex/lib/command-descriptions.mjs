@@ -1,0 +1,17 @@
+export const commandDescriptions = {
+  help:['查看 Codex 命令的中文用法与示例',''],
+  codex:['查看 Codex 中文帮助；例：/codex help','help 或子命令'],
+  compact:['压缩原生上下文，保留 DSH 显示历史',''],
+  status:['查看原生会话、模型、权限与上下文用量',''],
+  plan:['切换规划模式；例：/plan on','on 或 off'],
+  review:['执行原生代码审查；例：/review uncommitted','uncommitted、base 分支 或 commit 提交'],
+  diff:['查看工作区 Git 差异',''],
+  model:['切换模型；例：/model 提供方 模型标识 high','提供方 模型标识 可选推理强度'],
+  effort:['调整推理强度；例：/effort high','模型支持的推理强度'],
+  permissions:['设置文件权限与审批；例：/permissions workspace-write ask','read-only/workspace-write/danger-full-access，及 ask/never'],
+  network:['设置工作区可写模式的网络权限；例：/network on','on 或 off'],
+  'add-dir':['增加可写目录；例：/add-dir /home/harness/workspace','目录绝对路径'],
+  skills:['列出服务器 Codex 可用技能',''],
+  mcp:['查看服务器 Codex MCP 服务状态',''],
+  resume:['查看关联的原生会话及终端接续方法',''],
+};

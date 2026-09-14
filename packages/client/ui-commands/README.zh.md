@@ -93,3 +93,5 @@ composer 携带图片或通用文件提交时，只有声明了 `input.attachmen
 </details>
 
 **运行时不变式：** 不发布伴生入口。这是基于 wire 命令目录的浏览器侧 source，不发出 Cordis 事件，也不持有跨插件可变状态；dispatch 与 cache 行为由包测试覆盖。
+
+`definitionId` 以 `native-harness/` 开头的原生 Harness 命令，在所选预设内拥有同名命令的处理权。DSH 客户端的同名贡献或装饰不能替换它，也不能导致整组菜单消失。菜单选择、空格补全和回车提交遵守相同规则；首次直接回车时，先加载宿主命令目录再判断归属。
