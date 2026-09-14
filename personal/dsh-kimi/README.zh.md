@@ -31,7 +31,7 @@ Kimi 预设提供 `/status`、`/usage`、`/compact`、`/plan on|off`、`/swarm o
 
 `/resume` 显示服务器端原生会话 ID。用相同服务器账号接续，在回到 DSH 前退出该 CLI。插件检测 CLI 的活动占用，通过 Kimi 可逆的归档/恢复生命周期刷新空闲会话缓存，并用原生轮次和提问 ID 导入完成的轮次，不将消息数组位置用作同步游标。原生模型调用依赖桥接，因此 DSH 必须保持运行。
 
-原生问题的选项与自定义文本通过 DSH 问题界面回传。原生权限请求单独转发。文件和图片转换为原生提示内容。原生工具及子 Agent 事件保留在会话轨迹内。
+原生问题的选项与自定义文本通过 DSH 问题界面回传。原生权限请求单独转发。文件和图片转换为原生提示内容。原生工具及子 Agent 事件保留在会话轨迹内。事件通道停滞时，插件从原生持久化轨迹恢复文字和工具进度，不重复已输出的文字。展开已完成轮次的“已思考”区域，即可查看 Kimi 运行卡片及 AgentSwarm 子 Agent。
 
 ## 尚待完成的验收
 
@@ -45,3 +45,5 @@ Kimi 预设提供 `/status`、`/usage`、`/compact`、`/plan on|off`、`/swarm o
 ## 测试
 
 `node --test personal/dsh-kimi/test/native.test.mjs` 测试协议转换、分页和缓存交接。`test/native-smoke.mjs` 使用真实原生后端和合成模型提供方；`TEST_SWARM=1`、`TEST_QUESTION=1` 和 `TEST_CLI=1` 分别检验原生子 Agent、自定义回答及 CLI 持久化，不消耗外部模型额度。仅在验收服务器运行，测试数据位于 `功能测试/dsh-kimi`。
+
+`TEST_SNAPSHOT=1` 刻意屏蔽事件通道，验证运行中的轮次仍可在完成前呈现进度。它可以与 `TEST_SWARM=1` 组合使用。

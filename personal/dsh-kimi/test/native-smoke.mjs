@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 const cwd = '/home/harness/workspace/功能测试/dsh-kimi/native-smoke';
 await mkdir(cwd, { recursive: true });
 const events = [];
@@ -33,7 +34,9 @@ const ctx = { logger: console, sessions: {}, agents: { get: () => agent },
         yield { type:'finish',reason:{kind:'tool-calls'} }; return;
       }
       yield { type:'block-start',index:0,blockType:'text' };
+      if (process.env.TEST_SNAPSHOT === '1') await delay(1800);
       yield { type:'text-delta',index:0,text:'KIMI_NATIVE_READY' };
+      if (process.env.TEST_SNAPSHOT === '1') await delay(1800);
       yield { type:'block-end',index:0,block:{type:'text',text:'KIMI_NATIVE_READY'} };
       yield { type:'finish',reason:{kind:'stop'} };
     } }, attachments: {},
@@ -42,11 +45,16 @@ const runtime = new KimiRuntime(ctx, { baseUrl:'http://127.0.0.1:18793',tokenFil
 runtime.ready = runtime.start();
 try {
   await runtime.ready; clearInterval(runtime.timer);
+  if (process.env.TEST_SNAPSHOT === '1') {
+    const subscribe = runtime.native.subscribe.bind(runtime.native);
+    runtime.native.subscribe = id => subscribe(id, () => {});
+  }
   const chunks=[];
   for await (const chunk of runtime.run({provider:'kimi',model:encodeRoute('fixture','kimi-fixture'),sessionId:session.id,messages:[{role:'user',source:{kind:'user'},content:[{type:'text',text:'Reply KIMI_NATIVE_READY'}]}],signal:AbortSignal.timeout(90000)})) chunks.push(chunk);
   console.log(JSON.stringify({calls,chunks,nativeId:events.findLast(e=>e.type==='kimi/binding')?.data.nativeId,eventTypes:[...new Set(events.filter(e=>e.type==='kimi/event').map(e=>e.data.frame.type))]}));
   await writeFile(cwd+'/events.json',JSON.stringify(events));
   assert.ok(chunks.some(c=>c.type==='text-delta' && c.text.includes('KIMI_NATIVE_READY')));
+  if(process.env.TEST_SNAPSHOT==='1') assert.ok(events.some(e=>e.type==='kimi/progress' && e.data.turn.state==='running'), 'A silent event channel must still project native progress before completion');
   if(process.env.TEST_SWARM==='1') assert.ok(calls>=4, `Expected parent + two native children + parent continuation; got ${calls}`);
   if(process.env.TEST_QUESTION==='1') assert.equal(questions,1,'Native question must wait for and consume the DSH answer');
   if(process.env.TEST_CLI==='1') {

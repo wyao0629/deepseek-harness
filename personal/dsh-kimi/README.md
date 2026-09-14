@@ -31,7 +31,7 @@ The Kimi preset exposes `/status`, `/usage`, `/compact`, `/plan on|off`, `/swarm
 
 `/resume` gives the server-side native session ID. Continue with the same server account, then exit that CLI before resuming in DSH. The plugin detects active CLI ownership, refreshes the idle native cache through Kimi's reversible archive/restore lifecycle, and imports completed turns using durable native turn and prompt IDs. Message-array offsets are not synchronization cursors. DSH must stay running because native model requests use its bridge.
 
-Native question choices and free text return through DSH's question UI. Native approval requests are forwarded separately. Files and images are converted into native prompt content. Native tool and child-agent events are retained in the session trace.
+Native question choices and free text return through DSH's question UI. Native approval requests are forwarded separately. Files and images are converted into native prompt content. Native tool and child-agent events are retained in the session trace. When the event channel stalls, persisted native transcript snapshots recover text and tool progress without repeating previously emitted text. Expand the completed turn’s thinking area to inspect the Kimi run card and its AgentSwarm children.
 
 ## Known acceptance gaps
 
@@ -45,3 +45,5 @@ Native question choices and free text return through DSH's question UI. Native a
 ## Tests
 
 `node --test personal/dsh-kimi/test/native.test.mjs` tests protocol mapping, pagination and cache handoff. `test/native-smoke.mjs` uses the real native backend with a synthetic model provider; `TEST_SWARM=1`, `TEST_QUESTION=1` and `TEST_CLI=1` exercise native child agents, custom answers and CLI persistence without external model charges. Run it only on the acceptance host; its fixtures live under `功能测试/dsh-kimi`.
+
+`TEST_SNAPSHOT=1` deliberately silences the event channel and verifies that a running turn still projects progress before completion. It can be combined with `TEST_SWARM=1`.

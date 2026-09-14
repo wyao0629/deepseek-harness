@@ -15,9 +15,9 @@ node personal/install.mjs
 pnpm dsh --profile web
 ```
 
-The installer adds the local bundle to the web profile, creates the Codex preset, and applies the required compiled Session event metadata compatibility fix. It does not start or restart services. Keep the checkout at this path: the profile links its plugin directory. Configure providers and credentials in DSH after launch.
+The installer adds the local bundle to the web profile, creates the Codex preset, and applies the required compiled Session event metadata and native command-menu compatibility fixes. Existing installations must match this checkout's commands package version; build this checkout first. It does not start or restart services. Keep the checkout at this path: the profile links its plugin directory. Configure providers and credentials in DSH after launch.
 
-Set `DSH_HOME`, `DSH_PROFILE`, `CODEX_HOME`, or `CODEX_BIN` before installation and launch to select a different data directory, profile, native session directory, or Codex executable. Defaults use the current account; no server address or credentials are included. An overwritten preset or compiled Session module gets one small content-addressed backup under `$DSH_HOME/backups/dsh-codex`.
+Set `DSH_HOME`, `DSH_PROFILE`, `CODEX_HOME`, or `CODEX_BIN` before installation and launch to select a different data directory, profile, native session directory, or Codex executable. Defaults use the current account; no server address or credentials are included. An overwritten preset or compiled Session/commands module gets one small content-addressed backup under `$DSH_HOME/backups/dsh-codex`.
 
 For an existing installed DSH, provide its exact package manifest and executable:
 

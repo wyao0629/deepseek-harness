@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Native, selectedQuestionAnswer, promptContent, turnText, cliUsesSession } from '../lib/native.mjs';
+import { Native, selectedQuestionAnswer, promptContent, turnText, cliUsesSession, snapshotSuffix, transcriptThinking } from '../lib/native.mjs';
+
+test('snapshot recovery does not duplicate replayed prefixes or splice conflicting text', () => {
+  assert.equal(snapshotSuffix('hello', 'hello world'), ' world');
+  assert.equal(snapshotSuffix('hello', 'hello'), '');
+  assert.equal(snapshotSuffix('hello', 'hel'), '');
+  assert.equal(snapshotSuffix('hello', 'different'), '');
+  assert.equal(transcriptThinking({steps:[{frames:[{kind:'thinking',text:'reason'},{kind:'text',text:'answer'}]}]}), 'reason');
+});
 
 test('CLI ownership excludes the web daemon and unrelated explicit sessions', () => {
   assert.equal(cliUsesSession(['/opt/kimi-code/bin/kimi', 'web', '--no-open'], 'a'), false);

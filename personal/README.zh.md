@@ -15,9 +15,9 @@ node personal/install.mjs
 pnpm dsh --profile web
 ```
 
-安装器将本地组合包加入 web profile，创建 Codex 预设，并为编译后的 Session 模块应用必要的事件元数据兼容修正。它不会启动或重启服务。请保留仓库所在路径，因为 profile 会链接其中的插件目录。启动后在 DSH 中配置提供方和凭据。
+安装器将本地组合包加入 web profile，创建 Codex 预设，并为编译后的 Session 模块与原生命令菜单应用必要的兼容修正。已有安装的 commands 包版本必须与本仓库一致；请先构建本仓库。它不会启动或重启服务。请保留仓库所在路径，因为 profile 会链接其中的插件目录。启动后在 DSH 中配置提供方和凭据。
 
-安装与启动前可设置 `DSH_HOME`、`DSH_PROFILE`、`CODEX_HOME` 或 `CODEX_BIN`，分别指定数据目录、profile、原生会话目录或 Codex 可执行文件。默认使用当前账号，不包含服务器地址或凭据。被覆盖的预设或编译后的 Session 模块，会按内容生成一份小型备份，保存在 `$DSH_HOME/backups/dsh-codex`。
+安装与启动前可设置 `DSH_HOME`、`DSH_PROFILE`、`CODEX_HOME` 或 `CODEX_BIN`，分别指定数据目录、profile、原生会话目录或 Codex 可执行文件。默认使用当前账号，不包含服务器地址或凭据。被覆盖的预设或编译后的 Session/commands 模块，会按内容生成一份小型备份，保存在 `$DSH_HOME/backups/dsh-codex`。
 
 对于已安装的 DSH，提供准确的包清单与可执行文件路径：
 
