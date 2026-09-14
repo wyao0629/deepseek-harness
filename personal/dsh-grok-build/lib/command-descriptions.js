@@ -10,3 +10,4 @@ const descriptions = {
   workflow:'启动或管理工作流；可列出、暂停、恢复和停止工作流',
 };
 export const describeCommand = command => descriptions[command.name] ?? `执行 Grok 原生命令 /${command.name}；${command.description || '参数遵循原生命令格式'}`;
+export const nativeCommandNames = Object.keys(descriptions);

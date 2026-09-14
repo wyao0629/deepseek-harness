@@ -1,7 +1,8 @@
 import { GROK_PROVIDER, resolveGrokModelId } from './constants.js'
 import { grokPresenterDefinitions } from './presenters.js'
 import { createScope } from '@deepseek-ai/dsh-scope'
-import { describeCommand } from './command-descriptions.js'
+import { describeCommand, nativeCommandNames } from './command-descriptions.js'
+import { waitForCommandCatalog } from './command-catalog.js'
 
 export const name = 'grok-build-preset-route'
 export const inject = ['tools', 'commands', 'dshGrokBuild']
@@ -11,6 +12,7 @@ export function apply(ctx, config = {}) {
   const host = ctx.dshGrokBuild
   const scopes = new Map()
   let stopped = false
+  const lifetime = new AbortController()
   async function execute(invocation, name, args) {
     const id = await attach(invocation.agent)
     const catalog = host.commandCatalogs.get(id) ?? []
@@ -26,6 +28,8 @@ export function apply(ctx, config = {}) {
   }
   async function attach(agent) {
     const id = await host.ensureAgentSession(agent)
+    if (stopped) return id
+    await waitForCommandCatalog(host, id, lifetime.signal)
     if (stopped) return id
     if (scopes.has(agent.session.id)) return id
     const scope = createScope(ctx, agent), registrations = new Map()
@@ -49,9 +53,16 @@ export function apply(ctx, config = {}) {
     const [name,...rest]=invocation.rawInput.trim().split(/\s+/)
     return execute(invocation,name,rest.join(' '))
   }})
+  // These names are advertised by the installed Grok 1.0.30 ACP runtime. Keep
+  // discovery available before its asynchronous catalog arrives; execution
+  // still validates against the live native catalog above.
+  for (const name of nativeCommandNames) ctx.commands.register({name,definitionId:'native-harness/grok/'+name,
+    description:describeCommand({name}),...(['context','session-info'].includes(name)?{}:{input:{hint:'任务或参数；详见命令说明'}}),
+    handler:invocation=>execute(invocation,name,invocation.rawInput.trim())})
   ctx.on('agent/created', ({agent}) => { void attach(agent).catch(error => ctx.logger.warn('Grok 命令目录初始化失败：'+error.message)) })
   ctx.effect(function* () { yield async () => {
     stopped=true
+    lifetime.abort()
     for (const {scope,id,update} of scopes.values()) {
       host.commandListeners.get(id)?.delete(update)
       await scope.dispose()
