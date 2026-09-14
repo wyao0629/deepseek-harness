@@ -677,6 +677,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the exact effect disposer that unregisters this definition.',
       },
       {
+        signature: 'useNativePalette(): () => void',
+        description: 'Show this harness scope\'s commands, with global DSH commands under `/dsh`.',
+        parameters: [],
+        returns: 'disposer restoring the inherited command palette.',
+      },
+      {
         signature: 'registerFileReceiptResolver(resolver: CommandFileReceiptResolver): () => void',
         description: 'Register the sole authority that resolves staged file receipts for command submissions.',
         parameters: [{ name: 'resolver', description: 'Session-aware receipt resolver.' }],

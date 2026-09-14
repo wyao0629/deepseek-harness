@@ -5,7 +5,10 @@ import { encodeRoute, decodeRoute } from '../lib/route.mjs';
 import { apply } from '../lib/preset-route.mjs';
 
 test('preserves exact non-GPT provider and model, including duplicate model ids', async () => {
-  let handler; apply({ commands: { register() {} }, on: (event, fn) => { handler = fn; } });
+  let handler, palettes = 0; const commands = [];
+  apply({ commands: { useNativePalette() { palettes++; }, register(command) { commands.push(command.name); } }, on: (event, fn) => { handler = fn; } });
+  assert.equal(palettes, 1);
+  assert.ok(commands.includes('compact') && commands.includes('model') && commands.includes('permissions'));
   const result = await handler({}, async () => ({ provider: 'grok256', model: 'grok-4.6', reasoningEffort: 'high' }));
   assert.deepEqual(decodeRoute(result.model), { provider: 'grok256', model: 'grok-4.6' });
   assert.equal(result.reasoningEffort, 'high');

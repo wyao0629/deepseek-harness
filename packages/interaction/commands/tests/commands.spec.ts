@@ -41,6 +41,7 @@ function lifecycleOf(agent: Agent): Array<{ type: string; data: unknown }> {
 describe('parseCommand()', () => {
   it.each([
     ['/goal', { name: 'goal', rawInput: '' }],
+    ['/skill:etl x', { name: 'skill:etl', rawInput: ' x' }],
     ['/goal create the thing', { name: 'goal', rawInput: ' create the thing' }],
     ['/goal\ncreate the thing', { name: 'goal', rawInput: '\ncreate the thing' }],
     ['/goal_name-2\t x ', { name: 'goal_name-2', rawInput: '\t x ' }],
@@ -54,6 +55,23 @@ describe('parseCommand()', () => {
 })
 
 describe('CommandRuntime', () => {
+  it('switches a harness palette while preserving DSH commands under a namespace', async () => {
+    const ctx = await mount()
+    const { scope, agent } = await mintAgentScope(ctx, 'native-palette')
+    const other = await mintAgentScope(ctx, 'other-palette')
+    ctx.commands.register(command('compact', 'DSH compact'))
+    ctx.commands.register(command('goal'))
+    const dispose = scope.ctx.commands.useNativePalette()
+    scope.ctx.commands.register(command('compact', 'native compact'))
+    expect(ctx.commands.list(agent).map(item => item.name)).toEqual(['compact', 'dsh'])
+    expect(ctx.commands.list(other.agent).map(item => item.name)).toEqual(['compact', 'goal'])
+    const signal = new AbortController().signal
+    expect((await ctx.commands.execute(agent, '/compact', [], signal))?.result.text).toBe('native compact')
+    expect((await ctx.commands.execute(agent, '/dsh compact', [], signal))?.result.text).toBe('DSH compact')
+    expect((await ctx.commands.execute(agent, '/dsh', [], signal))?.result.text).toContain('/dsh goal')
+    dispose()
+    expect(ctx.commands.list(agent).map(item => item.name)).toEqual(['compact', 'goal'])
+  })
   it('lists immutable global descriptors with input metadata', async () => {
     const ctx = await mount()
     const { agent } = await mintAgentScope(ctx, 'a')

@@ -29,7 +29,7 @@ export type * from './types.ts'
 
 export const name = 'commands'
 
-const COMMAND_NAME = /^[a-z][a-z0-9_-]*$/u
+const COMMAND_NAME = /^[a-z][a-z0-9_:-]*$/u
 
 /** Shared frozen attachments value for attachment-free invocations. */
 const NO_ATTACHMENTS: readonly (ImageBlock | FileBlock)[] = Object.freeze([])
@@ -93,6 +93,7 @@ interface RegisteredCommand {
 /** All command registrations owned by one global or scoped layer. */
 class CommandLayer implements ScopeLayer {
   readonly commands: NamedEntries<RegisteredCommand>
+  nativePalette = false
 
   /**
    * Create one command layer with diagnostics specific to its ownership scope.
@@ -106,7 +107,7 @@ class CommandLayer implements ScopeLayer {
 
   /** @returns whether this layer owns no command registrations. */
   isEmpty(): boolean {
-    return this.commands.isEmpty()
+    return this.commands.isEmpty() && !this.nativePalette
   }
 }
 
@@ -123,7 +124,7 @@ declare module '@deepseek-ai/cordis' {
  * @returns The parsed command, or `undefined` when the line is not a command.
  */
 export function parseCommand(line: string): ParsedCommand | undefined {
-  const match = /^\/([a-z][a-z0-9_-]*)(?=$|[\t\n\r ])/u.exec(line)
+  const match = /^\/([a-z][a-z0-9_:-]*)(?=$|[\t\n\r ])/u.exec(line)
   if (match === null) return undefined
   const name = match[1]
   /* v8 ignore next -- the first capture is required whenever the regular expression matches */
@@ -289,6 +290,18 @@ export class CommandRuntime extends TypertRemoteService {
       layer => layer.commands.insert(registered.definition.name, registered),
       { label: 'commands.register()' },
     )
+  }
+
+  /**
+   * Show this harness scope's commands, with global DSH commands under `/dsh`.
+   * @returns disposer restoring the inherited command palette.
+   */
+  useNativePalette(): () => void {
+    return this.layers.effect(this.ctx, (layer) => {
+      if (layer.nativePalette) throw new Error('A native command palette already owns this scope')
+      layer.nativePalette = true
+      return () => { layer.nativePalette = false }
+    }, { label: 'commands.useNativePalette()' })
   }
 
   /**
@@ -468,7 +481,25 @@ export class CommandRuntime extends TypertRemoteService {
 
   /** Resolve global definitions followed by exact scoped shadows. */
   private view(agent: Agent): Map<string, RegisteredCommand> {
-    return this.layers.merge(agent, layer => layer.commands)
+    const globals = this.layers.merge(undefined, layer => layer.commands)
+    const result = new Map(globals)
+    for (const layer of this.layers.chainLayers(agent)) {
+      if (layer.nativePalette) {
+        result.clear()
+        result.set('dsh', normalizeDefinition({
+          name: 'dsh', description: 'DSH commands', input: { hint: '<command> [arguments]', attachments: true },
+          handler: (invocation) => {
+            const parsed = parseCommand('/' + invocation.rawInput.trimStart())
+            const target = parsed === undefined ? undefined : globals.get(parsed.name)?.definition
+            if (!target || !parsed) return { kind: 'success', text: [...globals.keys()].sort().map(name => '/dsh ' + name).join('\n') }
+            if (invocation.attachments.length && !target.input?.attachments) return { kind: 'error', text: 'This DSH command does not accept attachments.' }
+            return target.handler({ ...invocation, rawInput: parsed.rawInput })
+          },
+        }))
+      }
+      for (const [name, command] of layer.commands.entries()) result.set(name, command)
+    }
+    return result
   }
 
   /** Notify every registry observer without making UI refresh load-bearing. */

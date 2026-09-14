@@ -2,7 +2,8 @@ import { encodeRoute, decodeRoute } from './route.mjs';
 export const name = 'dsh-codex-preset-route';
 export const inject = ['commands', 'dshCodex'];
 export function apply(ctx) {
-  for (const command of ['codex', 'compact', 'status', 'plan', 'review', 'diff']) {
+  ctx.commands.useNativePalette();
+  for (const command of ['codex', 'compact', 'status', 'plan', 'review', 'diff', 'model', 'effort', 'permissions', 'network', 'add-dir', 'skills', 'mcp', 'resume']) {
     ctx.commands.register({ name: command, description: command === 'codex' ? 'Codex 原生命令（help 查看帮助）' : `Codex 原生 ${command}`,
       input: { hint: command === 'codex' ? 'help / status / compact / model / permissions' : '参数' },
       handler: invocation => {

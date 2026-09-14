@@ -1,0 +1,12 @@
+{
+  "name": "dsh-kimi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "Native Kimi Code sessions and AgentSwarm in DSH",
+  "exports": {".": "./lib/host.mjs", "./preset-route": "./lib/preset-route.mjs", "./client": "./lib/client.js", "./package.json": "./package.json"},
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}, "client": {"platform": "web", "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-client-ui-conversation"]}},
+  "peerDependencies": {"@deepseek-ai/schemastery": "^3.18.1", "@deepseek-ai/dsh-scope": "^0.1.5-rc.2"},
+  "scripts": {"test": "node --test test/*.test.mjs"}
+}

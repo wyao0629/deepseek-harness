@@ -1,0 +1,6 @@
+# dsh-grok-build host bundle. The Grok preset is installed into the user
+# preset root on first load so it appears beside Claude / standard / minimal
+# without replacing the global AgentFactory or the model picker.
+- insert:
+    - id: llm-grok-build
+      name: dsh-grok-build

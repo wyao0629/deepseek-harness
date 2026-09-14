@@ -1,0 +1,4 @@
+# Shipped by dsh-grok-build. Copy this preset under a new id to customize it.
+name: Grok
+description: 在 Grok Build 内运行。DSH 管理对话、轨迹和审批；Grok Build 拥有 Agent 循环与工具。
+order: 11

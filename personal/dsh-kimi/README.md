@@ -1,0 +1,47 @@
+# dsh-kimi 0.1.0
+
+English | [中文](README.zh.md)
+
+Run the model selected in DSH through native Kimi Code 0.42.0. Kimi owns the agent loop, native tools and AgentSwarm; DSH owns credentials, conversation display and interactive answers. This is a personal integration under active acceptance, not a claim of complete CLI parity.
+
+## Deployment
+
+Use Linux and Node.js 24. Keep this directory beside `dsh-codex`, whose Responses bridge and route codec are shared. Build this fork first: its commands package adds `useNativePalette()`. The official unmodified DSH package does not provide that API.
+
+Install the official Kimi Code binary, then run it as the DSH service account:
+
+```bash
+/opt/kimi-code/bin/kimi web --no-open --host 127.0.0.1 --port 18793
+```
+
+Keep this process supervised independently of browser connections. Its default token is `$HOME/.kimi-code/server.token`. The DSH plugin uses loopback port 18794 for model requests; provider API keys remain in DSH. Configure `baseUrl`, `tokenFile`, `bridgePort`, `requestTimeoutMs` and `pollMs` through the host bundle config when using other paths or ports.
+
+Install the directory with `dsh plugin --profile web add /absolute/path/personal/dsh-kimi`. Under `$DSH_HOME/.agent-presets/kimi`, create `preset.yml` containing `name: Kimi` and `agent.cordis.yml` containing:
+
+```yaml
+- id: kimi-route
+  name: dsh-kimi/preset-route
+```
+
+Restart DSH and create a conversation with the Kimi preset. Tests belong in the `功能测试` workspace. This bundle needs the same ignorable Session metadata compatibility fix as dsh-codex on DSH 0.1.5-rc.2.
+
+## Commands and session handoff
+
+The Kimi preset exposes `/status`, `/usage`, `/compact`, `/plan on|off`, `/swarm on|off`, `/tasks`, `/skills`, `/mcp`, `/resume`, `/model <provider> <model> [effort]` and `/effort <value>`. Native user-activatable skills appear as `/skill:<name>` after native binding. Global DSH commands remain under `/dsh <command>`; they do not silently replace native commands.
+
+`/resume` gives the server-side native session ID. Continue with the same server account, then exit that CLI before resuming in DSH. The plugin detects active CLI ownership, refreshes the idle native cache through Kimi's reversible archive/restore lifecycle, and imports completed turns using durable native turn and prompt IDs. Message-array offsets are not synchronization cursors. DSH must stay running because native model requests use its bridge.
+
+Native question choices and free text return through DSH's question UI. Native approval requests are forwarded separately. Files and images are converted into native prompt content. Native tool and child-agent events are retained in the session trace.
+
+## Known acceptance gaps
+
+- Only DSH full-access mode can execute currently. Read-only and workspace-write modes are rejected until a genuinely isolated native worker is implemented.
+- Do not keep two interactive clients open on the same native session. Background tasks need separate session ownership.
+- Existing DSH history before the first Kimi binding, edited-history rewind, and fully bidirectional attachment handling still require end-to-end acceptance.
+- `/compact` currently reports that native compaction started; completion progress needs a dedicated UI adapter.
+- The native API may return an empty usage aggregate. The adapter omits unavailable usage instead of claiming zero tokens; exact cost accounting is pending.
+- Terminal-only UI commands and authentication flows are not exposed as DSH slash commands.
+
+## Tests
+
+`node --test personal/dsh-kimi/test/native.test.mjs` tests protocol mapping, pagination and cache handoff. `test/native-smoke.mjs` uses the real native backend with a synthetic model provider; `TEST_SWARM=1`, `TEST_QUESTION=1` and `TEST_CLI=1` exercise native child agents, custom answers and CLI persistence without external model charges. Run it only on the acceptance host; its fixtures live under `功能测试/dsh-kimi`.

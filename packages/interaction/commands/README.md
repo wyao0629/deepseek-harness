@@ -47,11 +47,15 @@ The handler returns `success` or `error` plus optional UI text that the adapter 
 
 ### Command syntax
 
-A command line starts with a slash at byte zero, a lowercase name containing letters, digits, `_` or `-`, and then either end-of-input or whitespace. Everything after the name — including separator whitespace — is the command's `rawInput`, and the command owns its own grammar for it. Lines that are not syntactically a command, or that name an unknown command, are rejected by the adapter instead of becoming a model prompt.
+A command line starts with a slash at byte zero, a lowercase name containing letters, digits, `_`, `-` or `:`, and then either end-of-input or whitespace. Everything after the name — including separator whitespace — is the command's `rawInput`, and the command owns its own grammar for it. Lines that are not syntactically a command, or that name an unknown command, are rejected by the adapter instead of becoming a model prompt.
 
 ### Agent-scoped commands
 
 A plain registration is global. A command-producing plugin mounted beneath an agent's own context declares its `commands` injection and registers an exact agent-scoped command, which shadows the global definition of the same name for that agent only.
+
+### Native Harness palettes
+
+A scoped Harness preset can call `ctx.commands.useNativePalette()` to replace inherited discovery with its native commands. Global DSH commands stay available under `/dsh <command>`; `/dsh` lists them. The returned disposer restores inherited discovery. Command handlers retain their own input and attachment checks. Per-session native skill catalogs must register under an actual agent scope, not the shared standing preset scope.
 
 ### Attachments
 

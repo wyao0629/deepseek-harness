@@ -143,6 +143,12 @@ Human-command registry. Plain-context definitions are global; definitions regist
 register(definition: CommandDefinition): () => void
 
 /**
+ * Show this harness scope's commands, with global DSH commands under `/dsh`.
+ * @returns disposer restoring the inherited command palette.
+ */
+useNativePalette(): () => void
+
+/**
  * Register the sole authority that resolves staged file receipts for command submissions.
  * @param resolver - Session-aware receipt resolver.
  * @returns disposer that removes this exact resolver.

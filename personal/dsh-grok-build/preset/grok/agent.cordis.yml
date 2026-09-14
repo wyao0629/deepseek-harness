@@ -1,0 +1,4 @@
+# Shipped by dsh-grok-build. Grok Build owns the inner agent loop and tools;
+# this preset only overrides the model route and registers presentation mirrors.
+- id: grok-build-route
+  name: dsh-grok-build/preset-route
