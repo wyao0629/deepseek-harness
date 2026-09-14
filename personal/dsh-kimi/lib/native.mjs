@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 
 export function cliUsesSession(args, id) {
   if (basename(args[0] ?? '') !== 'kimi' || ['web', 'rc', 'remote'].includes(args[1])) return false;
-  const position = args.findIndex(arg => ['--session', '-r'].includes(arg));
+  const position = args.findIndex(arg => ['--session', '-S', '-r'].includes(arg));
   return position < 0 || !args[position + 1] || args[position + 1] === id;
 }
 

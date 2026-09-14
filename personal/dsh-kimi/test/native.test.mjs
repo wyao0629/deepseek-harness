@@ -14,6 +14,7 @@ test('CLI ownership excludes the web daemon and unrelated explicit sessions', ()
   assert.equal(cliUsesSession(['/opt/kimi-code/bin/kimi', 'web', '--no-open'], 'a'), false);
   assert.equal(cliUsesSession(['/opt/kimi-code/bin/kimi', '-r', 'a'], 'a'), true);
   assert.equal(cliUsesSession(['/opt/kimi-code/bin/kimi', '--session', 'b'], 'a'), false);
+  assert.equal(cliUsesSession(['/opt/kimi-code/bin/kimi', '-S', 'b'], 'a'), false);
   assert.equal(cliUsesSession(['/opt/kimi-code/bin/kimi', '-c'], 'a'), true);
 });
 

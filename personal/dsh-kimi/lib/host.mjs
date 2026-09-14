@@ -73,7 +73,9 @@ export class KimiRuntime {
     if (permissions.mode !== 'danger-full-access') throw new Error('Kimi native backend requires a filesystem-isolated worker for this DSH permission mode; execution was not started.');
     if ((await this.native.call(`/api/v1/sessions/${binding.nativeId}`)).busy) throw new Error('该 Kimi 会话正在原生端运行，请等待完成后再从 DSH 接续。');
     const alias = await this.model(route, signal);
-    const agentConfig = { model: alias, permission_mode: this.ctx.approval.effectivePolicy(session) === 'never' ? 'yolo' : 'manual', ...(effort ? { thinking: effort } : {}) };
+    // Keep native questions interactive; native auto mode would answer them without the user.
+    // Tool approval decisions are delegated to DSH below, including its never-ask policy.
+    const agentConfig = { model: alias, permission_mode: 'manual', ...(effort ? { thinking: effort } : {}) };
     await this.native.call(`/api/v1/sessions/${binding.nativeId}/profile`, { agent_config: agentConfig });
     binding = { ...binding, provider: route.provider, model: route.model };
     await this.save(session, binding);
@@ -88,6 +90,11 @@ export class KimiRuntime {
     const root = `/api/v1/sessions/${binding.nativeId}`;
     const approvals = await this.native.call(root + '/approvals?status=pending');
     for (const request of approvals.items) {
+      if (this.ctx.approval.effectivePolicy(agent.session) === 'never') {
+        await this.native.call(root + '/approvals/' + request.approval_id, {decision:'approved'});
+        log(agent.session, 'approval', {nativeId:binding.nativeId,approvalId:request.approval_id,decision:'approved',policy:'never'});
+        continue;
+      }
       const answer = await this.ctx.userQuestions.ask({ agent, signal, questions: [{ id: request.approval_id, header: 'Kimi 权限',
         question: `${request.tool_name}: ${request.action}`, detail: JSON.stringify(request.tool_input_display),
         options: [{ label: '允许一次' }, { label: '本会话允许' }, { label: '拒绝' }] }] });
