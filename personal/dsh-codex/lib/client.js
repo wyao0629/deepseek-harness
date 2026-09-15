@@ -65,7 +65,7 @@ const runDefinition = {
 		};
 		if (event.type === "codex/item") return {
 			...context.state,
-			items: [...context.state.items, event.data]
+			items: [...context.state.items.filter(item=>item.itemId!==event.data.itemId), event.data]
 		};
 		if (event.type === "codex/approval") return {
 			...context.state,
@@ -81,7 +81,7 @@ const runDefinition = {
 			kind: "codex-run",
 			id: context.id,
 			target: "chat",
-			anchorSeq: context.start.event.seq,
+			anchorSeq: context.start.location?.turn?.end?.seq ?? context.start.event.seq,
 			location: context.start.location,
 			visibility: "visible",
 			data
@@ -139,10 +139,27 @@ function statusLabel(status) {
 		case "failed": return "失败";
 	}
 }
+function collaborationAgents(items) {
+ const agents=new Map();
+ for(const item of items) {
+  if(item.kind!=='collabAgentToolCall') continue;
+  let call;try {call=JSON.parse(item.detail);} catch {continue;}
+  for(const id of call.receiverThreadIds??[]) {
+   const a={...(agents.get(id)??{id,status:'pending',messages:[]})};
+   if(call.prompt) a.task=call.prompt;
+   const state=call.agentsStates?.[id];
+   if(state?.status) a.status=state.status;
+   if(state?.message && !a.messages.includes(state.message)) a.messages=[...a.messages,state.message];
+   agents.set(id,a);
+  }
+ }
+ return [...agents.values()];
+}
 function RunPanel({ node }) {
 	const data = node.data;
+ const agents=collaborationAgents(data.items);
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("details", {
-		open: data.status !== "completed",
+		open: true,
 		"data-codex-run": data.status,
 		children: [
 			/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("summary", { children: [
@@ -150,8 +167,15 @@ function RunPanel({ node }) {
 				data.model,
 				data.effort === void 0 ? "" : ` · ${data.effort}`,
 				" · ",
-				statusLabel(data.status)
+				statusLabel(data.status),
+                ` · 已派出 ${agents.length} 个子 Agent`
 			] }),
+            agents.map((a,index)=>react_jsx_runtime.jsxs('details',{'data-codex-agent':a.id,open:true,children:[
+             react_jsx_runtime.jsx('summary',{children:`子 Agent ${index+1} · ${{completed:'已完成',running:'执行中',pendingInit:'初始化',errored:'失败',shutdown:'已结束',notFound:'未找到',pending:'等待'}[a.status]??a.status}`}),
+             a.task?react_jsx_runtime.jsxs('details',{children:[react_jsx_runtime.jsx('summary',{children:'任务说明'}),react_jsx_runtime.jsx('p',{style:{whiteSpace:'pre-wrap'},children:a.task})]}):null,
+             ...a.messages.map((text,i)=>react_jsx_runtime.jsx('p',{style:{whiteSpace:'pre-wrap',overflowWrap:'anywhere'},children:text},i)),
+             a.messages.length?null:react_jsx_runtime.jsx('small',{children:'等待该子 Agent 的结果；原生协作事件未提供独立思考流。'}),
+            ]},a.id)),
 			data.items.map((item, index) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("details", { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("summary", { children: [
 				item.phase === "started" ? "○" : "●",
 				" ",

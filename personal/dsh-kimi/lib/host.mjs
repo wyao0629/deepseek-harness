@@ -145,6 +145,7 @@ export class KimiRuntime {
     const push = frame => { queue.push(frame); wake?.(); wake = undefined; };
     let promptId = randomUUID(); let output = '', reasoning = '', startedText = false, startedReasoning = false;
     let lastDelta = Date.now(), snapshotMode = false, progressHash;
+    const childTurns=new Map();
     try {
       binding = await this.bind(agent, route, options.reasoningEffort, signal);
       beforeUsage=(await this.native.call(`/api/v1/sessions/${binding.nativeId}`)).usage;
@@ -164,13 +165,18 @@ export class KimiRuntime {
           if (!frame.session_id) continue;
           log(agent.session, 'event', { nativeId: binding.nativeId, promptId, frame });
           const p = frame.payload ?? {};
-          if (/assistant\.delta$/.test(frame.type) && (!(p.agent_id ?? p.agentId) || (p.agent_id ?? p.agentId) === 'main')) {
+          const owner=p.agentId??p.agent_id??frame.agent_id;
+          if(owner && owner!=='main') {
+            if(!childTurns.has(owner)) childTurns.set(owner,new Set());
+            if(p.turnId!==undefined) childTurns.get(owner).add(String(p.turnId).replace(/^t/,''));
+          }
+          if (/assistant\.delta$/.test(frame.type) && owner === 'main') {
             if (snapshotMode) continue;
             lastDelta = Date.now();
             const delta = p.delta ?? p.text ?? ''; if (typeof delta !== 'string') continue;
             if (!startedText) { yield { type: 'block-start', index: 0, blockType: 'text' }; startedText = true; }
             output += delta; yield { type: 'text-delta', index: 0, text: delta };
-          } else if (/thinking\.delta$/.test(frame.type) && (!(p.agent_id ?? p.agentId) || (p.agent_id ?? p.agentId) === 'main')) {
+          } else if (/thinking\.delta$/.test(frame.type) && owner === 'main') {
             if (snapshotMode) continue;
             lastDelta = Date.now();
             const delta = p.delta ?? p.text ?? ''; if (typeof delta !== 'string') continue;
@@ -208,7 +214,23 @@ export class KimiRuntime {
       const { turns } = await this.native.transcript(binding.nativeId, binding.nativePromptId ? {turnId:binding.nativeTurnId,promptId:binding.nativePromptId} : undefined);
       const current = turns.find(turn => turn.triggerPromptId === promptId);
       const answer = current ? turnText(current) : '';
-      if (current) log(agent.session, 'transcript', { nativeId: binding.nativeId, promptId, turn: current });
+      if (current) {
+        log(agent.session, 'transcript', { nativeId: binding.nativeId, promptId, turn: current });
+        for(const step of current.steps??[]) for(const f of step.frames??[]) for(const ref of f.agentRefs??[]) {
+          if(ref.agentId && ref.agentId!=='main' && !childTurns.has(ref.agentId)) childTurns.set(ref.agentId,new Set());
+        }
+      }
+      // Persist each child's authoritative timeline once, not on every progress poll.
+      // It restores non-streamed thinking and missing deltas without duplicating live text.
+      for(const [agentId,turnIds] of childTurns) {
+        try {
+          const page=await this.native.call(`/api/v1/sessions/${binding.nativeId}/transcript?agent_id=${encodeURIComponent(agentId)}&page_size=100`);
+          const turns=page.items.filter(t=>t.kind==='turn' && (!turnIds.size || turnIds.has(String(t.turnId).replace(/^t/,'')))).sort((a,b)=>a.ordinal-b.ordinal);
+          log(agent.session,'agent-transcript',{nativeId:binding.nativeId,promptId,agentId,turns});
+        } catch(error) {
+          log(agent.session,'agent-transcript-unavailable',{nativeId:binding.nativeId,promptId,agentId,error:String(error.message??error)});
+        }
+      }
       if (answer && answer.startsWith(output) && answer.length > output.length) {
         if (!startedText) { yield { type: 'block-start', index: 0, blockType: 'text' }; startedText = true; }
         const remainder = answer.slice(output.length); output = answer;
