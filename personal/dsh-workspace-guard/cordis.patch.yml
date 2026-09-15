@@ -1,0 +1,3 @@
+- insert:
+    - id: workspace-delete-guard
+      name: dsh-workspace-guard

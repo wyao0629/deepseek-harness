@@ -1,0 +1,10 @@
+{
+  "name": "dsh-workspace-guard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Explicit per-call file deletion approval for DSH tools",
+  "exports": { ".": "./lib/index.mjs", "./package.json": "./package.json" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}
