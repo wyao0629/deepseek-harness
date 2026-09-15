@@ -22,6 +22,7 @@
  * and a hole has exactly one declaring entry — they carry the same owner
  * contract and the same occupant.
  */
+import type { SessionMenuAction } from '../session-menu.ts'
 import type { HostObservable, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pull the owner SlotMap merges into programs that resolve the
 // runtime shares below.
@@ -89,6 +90,8 @@ export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']
  */
 export type WorkspaceBrowserInjected = {
   hooks: DirectoryPickingInjected['hooks'] & {
+    /** Plugin contributions, updated on activation and disposal. */
+    sessionMenuActions: HostObservable<readonly SessionMenuAction[]>
     /**
      * Fixed Host facts, reached through a hook rather than injected as values:
      * the renderer memoizes an entry's inject result for the registration's

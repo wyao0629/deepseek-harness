@@ -11,10 +11,11 @@ import {
   HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16,
   IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16,
   IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, relativeTime,
-  StateDot,
+  StateDot, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
+import type { SessionMenuAction } from '../session-menu.ts'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
 import css from './Rows.module.css'
@@ -377,7 +378,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, menuActions = [], t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -389,6 +390,8 @@ export function SessionNodeItem({
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Additional operations registered by plugins. */
+  menuActions?: readonly SessionMenuAction[] | undefined
   /** Scroll this row into view after search navigation, then acknowledge it. */
   onReveal?: (() => void) | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
@@ -404,6 +407,9 @@ export function SessionNodeItem({
   const primaryStatus = statuses[0]
   const showStatus = primaryStatus.state !== 'done' || row.completed
   const [menuOpen, setMenuOpen] = useState(false)
+  const [notice, setNotice] = useState<{ key: number; text: string; pending: boolean } | null>(null)
+  const operation = useRef(0)
+  const pending = useRef(false)
   const rowRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (onReveal === undefined) return
@@ -418,6 +424,7 @@ export function SessionNodeItem({
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    ...menuActions.map(action => ({ id: action.id, label: action.label, disabled: notice?.pending === true })),
   ]
   // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
@@ -482,6 +489,22 @@ export function SessionNodeItem({
               if (id === 'rename') onRename(node.id, row.title)
               if (id === 'fork') onFork(node.id)
               if (id === 'archive') onArchive(node.id)
+              const action = menuActions.find(item => item.id === id)
+              if (action && !pending.current) {
+                const key = ++operation.current
+                pending.current = true
+                if (action.feedback) setNotice({ key, text: action.feedback.pending, pending: true })
+                void (async () => {
+                  try {
+                    await action.run(node.id)
+                    if (action.feedback) setNotice({ key: key + 0.5, text: action.feedback.success, pending: false })
+                  } catch (error: unknown) {
+                    setNotice({ key: key + 0.5, text: error instanceof Error ? error.message : String(error), pending: false })
+                  } finally {
+                    pending.current = false
+                  }
+                })()
+              }
             }}
             portal
             closeOnPointerLeave
@@ -501,13 +524,16 @@ export function SessionNodeItem({
     </div>
   )
   return (
-    <HoverCard
-      anchor={ownRow}
-      content={<SessionHoverContent node={node} now={now} t={t} />}
-      disabled={menuOpen || drag?.active === true}
-      copyText={row.blank ? undefined : row.title}
-      copyLabel={t('copy')}
-      copiedLabel={t('hover.copied')}
-    />
+    <>
+      {notice && <Toast key={notice.key} text={notice.text} holdMs={notice.pending ? 180000 : 5000} onDone={() => { setNotice(null) }} />}
+      <HoverCard
+        anchor={ownRow}
+        content={<SessionHoverContent node={node} now={now} t={t} />}
+        disabled={menuOpen || drag?.active === true}
+        copyText={row.blank ? undefined : row.title}
+        copyLabel={t('copy')}
+        copiedLabel={t('hover.copied')}
+      />
+    </>
   )
 }

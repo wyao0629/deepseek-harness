@@ -1,5 +1,7 @@
 /** Workspace archive and directory UI capability. */
 
+import { SessionMenuRegistry } from './session-menu.ts'
+import type { SessionMenuAction } from './session-menu.ts'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { ClientRemote, DirectoryListing, RemoteFailure } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
@@ -14,6 +16,12 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 
 /** Workspace archive and directory operations consumed by Client UI domains. */
 export interface UiWorkspace {
+  /**
+   * Add an action to every session row menu.
+   * @param action - Plugin descriptor and clicked-session callback.
+   * @returns Disposer that withdraws this contribution.
+   */
+  registerSessionMenuAction(action: SessionMenuAction): () => void
   /**
    * Select a Session and show its Conversation as one UI navigation action.
    * @param sessionId - listed or retained Session to display.
@@ -88,6 +96,13 @@ export class DirectoryBrowseError extends Error {
 
 /** Implements Workspace archive and directory UI operations. */
 class UiWorkspaceService extends Service implements UiWorkspace {
+  /** Observable contributions consumed by the sidebar menu. */
+  readonly sessionMenu = new SessionMenuRegistry()
+
+  registerSessionMenuAction(action: SessionMenuAction): () => void {
+    return this.sessionMenu.register(action)
+  }
+
   private readonly connecting = new Map<WorkspaceId, Promise<SessionId>>()
   private readonly lifetime = new AbortController()
 

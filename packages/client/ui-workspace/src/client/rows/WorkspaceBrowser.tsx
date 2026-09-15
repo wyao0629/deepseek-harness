@@ -25,6 +25,7 @@ import type { SessionNode, SessionOrderBy } from '../tree.ts'
 import {
   deriveFlat, deriveGroups, deriveSearchResults, owningGroupKey, UNGROUPED_KEY,
 } from '../tree.ts'
+import type { SessionMenuAction } from '../session-menu.ts'
 import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
@@ -239,6 +240,7 @@ type SessionTreeProps = Pick<
 > & {
   /** Host account home for POSIX hover-path abbreviation. */
   home?: string | undefined
+  menuActions?: readonly SessionMenuAction[] | undefined
   workspaces: readonly WorkspaceView[]
   /** Whether the current Workspace stream has a complete Host baseline. */
   workspaceReady: boolean
@@ -279,7 +281,7 @@ function SessionTree({
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
-  sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
+  sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, menuActions, t,
   revealSessionId, onSessionRevealed,
 }: SessionTreeProps) {
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
@@ -588,6 +590,7 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    menuActions={menuActions}
                     onReveal={node.id === revealSessionId && group.key === revealGroup
                       ? () => { onSessionRevealed(node.id) }
                       : undefined}
@@ -620,7 +623,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
-  archivedSessionIds, usePanelInfo,
+  archivedSessionIds, usePanelInfo, menuActions,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
   revealSessionId, onSessionRevealed, t,
 }: Pick<
@@ -632,6 +635,7 @@ function FlatList({
   | 'onSessionRename'
   | 'onSessionArchive'
   | 'archivedSessionIds'
+  | 'menuActions'
   | 'usePanelInfo'
   | 'orderBy'
   | 'sessionOrderByAccount'
@@ -715,6 +719,7 @@ function FlatList({
               onRename={onSessionRename}
               onFork={forkSession}
               onArchive={onSessionArchive}
+              menuActions={menuActions}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -859,9 +864,11 @@ export function WorkspaceBrowser({
   searchResultLimit,
   useDirectoryFlow,
   useHostInfo,
+  useSessionMenuActions,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
+  const menuActions = useSessionMenuActions(items => items)
   const home = useHostInfo(info => info.home)
   const workspaces = useWorkspaces(state => state.items)
   const workspacePhase = useWorkspaces(state => state.phase)
@@ -1272,6 +1279,7 @@ export function WorkspaceBrowser({
           : groupBy === 'flat'
             ? (
               <FlatList
+                menuActions={menuActions}
                 usePanelInfo={usePanelInfo}
                 useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}
                 open={open} forkSession={forkSession}
@@ -1289,6 +1297,7 @@ export function WorkspaceBrowser({
             )
             : (
               <SessionTree
+                menuActions={menuActions}
                 usePanelInfo={usePanelInfo}
                 useSessions={useSessions}
                 useSessionPendingInteraction={useSessionPendingInteraction}
