@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-15-kimi-progress-and-command-recovery.md
+2026-09-15-kimi-progress-and-command-recovery.md: 68d215bc2805f88e7a4357a6a17ebb25cd93f226
+2026-09-15-kimi-progress-and-command-recovery.zh.md: 23ef514b75b9bc9cb83e7f109ecacc493380add3

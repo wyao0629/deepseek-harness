@@ -42,6 +42,7 @@ describe('parseCommand()', () => {
   it.each([
     ['/goal', { name: 'goal', rawInput: '' }],
     ['/skill:etl x', { name: 'skill:etl', rawInput: ' x' }],
+    ['/sub-skill.review ETL', { name: 'sub-skill.review', rawInput: ' ETL' }],
     ['/goal create the thing', { name: 'goal', rawInput: ' create the thing' }],
     ['/goal\ncreate the thing', { name: 'goal', rawInput: '\ncreate the thing' }],
     ['/goal_name-2\t x ', { name: 'goal_name-2', rawInput: '\t x ' }],

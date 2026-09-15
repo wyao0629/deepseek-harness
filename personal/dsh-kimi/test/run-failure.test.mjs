@@ -10,7 +10,10 @@ test('native connection failure records a terminal state and releases the execut
   runtime.bind=async()=>({nativeId:'native-test'});
   runtime.native.call=async()=>({usage:{}});
   runtime.native.subscribe=async()=>{throw Error('connection closed')};
-  await assert.rejects(async()=>{for await(const chunk of runtime.run({model:encodeRoute('test','model'),sessionId:agent.session.id,messages:[]})) void chunk},/connection closed/);
+  const chunks=[];
+  for await(const chunk of runtime.run({model:encodeRoute('test','model'),sessionId:agent.session.id,messages:[]})) chunks.push(chunk);
+  assert.equal(chunks.at(-1).reason.failure.code,'KIMI_BRIDGE');
+  assert.equal(chunks.at(-1).reason.failure.message,'connection closed');
   assert.equal(events.at(-1).data.status,'failed');
   assert.equal(events.at(-1).data.error,'connection closed');
   assert.equal(runtime.busy.size,0);

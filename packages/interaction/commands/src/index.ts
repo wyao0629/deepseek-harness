@@ -29,7 +29,7 @@ export type * from './types.ts'
 
 export const name = 'commands'
 
-const COMMAND_NAME = /^[a-z][a-z0-9_:-]*$/u
+const COMMAND_NAME = /^[a-z][a-z0-9_.:-]*$/u
 
 /** Shared frozen attachments value for attachment-free invocations. */
 const NO_ATTACHMENTS: readonly (ImageBlock | FileBlock)[] = Object.freeze([])
@@ -124,7 +124,7 @@ declare module '@deepseek-ai/cordis' {
  * @returns The parsed command, or `undefined` when the line is not a command.
  */
 export function parseCommand(line: string): ParsedCommand | undefined {
-  const match = /^\/([a-z][a-z0-9_:-]*)(?=$|[\t\n\r ])/u.exec(line)
+  const match = /^\/([a-z][a-z0-9_.:-]*)(?=$|[\t\n\r ])/u.exec(line)
   if (match === null) return undefined
   const name = match[1]
   /* v8 ignore next -- the first capture is required whenever the regular expression matches */

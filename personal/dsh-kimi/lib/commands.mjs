@@ -17,10 +17,30 @@ export const commandHelp = {
   goal: ['查看、创建或控制原生目标；例：/goal 修复 ETL；支持 status/pause/resume/cancel', '目标描述或 status/pause/resume/cancel'],
 };
 
-export function nativePrompt(content) {
+export const aliases = {h:'help',task:'tasks',rename:'title',thinking:'effort'};
+
+export function nativeSubmission(promptId, request) {
+  return request.skills ? request : {prompt_id:promptId,...request};
+}
+
+export function skillCommands(skills) {
+  return skills.flatMap(skill => {
+    if (![undefined,'prompt','inline','flow'].includes(skill.type)) return [];
+    const names = skill.source === 'builtin' || skill.name.includes('.') ? [skill.name] : ['skill:'+skill.name,skill.name];
+    return names.filter(name => /^[a-z][a-z0-9_.:-]*$/.test(name) && !commandHelp[name] && !aliases[name]).map(name => ({name,skill:skill.name,description:`调用 Kimi 技能 ${skill.name}：${skill.description || '按技能指令执行，可追加任务要求'}`}));
+  });
+}
+
+export function nativePrompt(content, skills = []) {
   const index = content.findIndex(item => item.type === 'text');
   const match = index < 0 ? null : content[index].text.match(/^\/(swarm|goal)\s+([\s\S]+)$/);
-  if (!match) return {content};
+  if (!match) {
+    const slash = index < 0 ? null : content[index].text.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/);
+    const skill = slash && (skillCommands(skills).find(item => item.name === slash[1]) ?? (slash[1].startsWith('skill:') && skills.some(item=>item.name===slash[1].slice(6)) ? {skill:slash[1].slice(6)} : undefined));
+    if (!skill) return {content};
+    const args = slash[2]?.trim() ?? '';
+    return {content:content.map((item,i)=>i===index?{type:'text',text:args || `执行技能 ${skill.skill}`} : item),skills:[{name:skill.skill,args}]};
+  }
   const task = match[2].trim();
   if (!task) throw new Error('请填写任务内容。');
   const next = content.map((item, i) => i === index ? {...item, text:task} : item);

@@ -47,7 +47,7 @@ The handler returns `success` or `error` plus optional UI text that the adapter 
 
 ### Command syntax
 
-A command line starts with a slash at byte zero, a lowercase name containing letters, digits, `_`, `-` or `:`, and then either end-of-input or whitespace. Everything after the name — including separator whitespace — is the command's `rawInput`, and the command owns its own grammar for it. Lines that are not syntactically a command, or that name an unknown command, are rejected by the adapter instead of becoming a model prompt.
+A command line starts with a slash at byte zero, a lowercase name containing letters, digits, `_`, `-`, `.` or `:`, and then either end-of-input or whitespace. Everything after the name — including separator whitespace — is the command's `rawInput`, and the command owns its own grammar for it. Lines that are not syntactically a command, or that name an unknown command, are rejected by the adapter instead of becoming a model prompt.
 
 ### Agent-scoped commands
 

@@ -6,7 +6,11 @@ function object(value: JsonValue | undefined): Record<string, JsonValue> | undef
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined
 }
 
-/** Preserve event sequence and identity while avoiding repeated full native transcripts. */
+/**
+ * Preserve event sequence and identity while avoiding repeated full native transcripts.
+ * @param event - durable event projected onto the session wire.
+ * @returns the event with compact Kimi progress, or the unchanged non-progress event.
+ */
 export function progressWireEvent(event: SessionWireEvent): SessionWireEvent {
   if (event.type !== 'kimi/progress') return event
   const data = object(event.data)

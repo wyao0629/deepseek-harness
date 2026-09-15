@@ -9,7 +9,7 @@ import { Native, promptContent, selectedQuestionAnswer, turnText, snapshotSuffix
 import { startBridge } from '../../dsh-codex/lib/bridge.mjs';
 import { encodeRoute, decodeRoute } from '../../dsh-codex/lib/route.mjs';
 import { dshHome } from '../../dsh-codex/lib/paths.mjs';
-import { commandHelp, nativePrompt } from './commands.mjs';
+import { commandHelp, nativePrompt, nativeSubmission, aliases } from './commands.mjs';
 
 export const name = 'dsh-kimi';
 export const inject = ['llm', 'sessions', 'agents', 'sessionController', 'userQuestions', 'attachments', 'sandboxPolicy', 'approval'];
@@ -28,6 +28,8 @@ export class KimiRuntime {
     this.directory = join(dshHome(), 'dsh-kimi'); this.models = new Map(); this.running = new Set(); this.stopped = false;
     this.lifetime = new AbortController();
     this.catalogListeners = new Map();
+    this.skillCatalogs = new Map();
+    this.bindingLoads = new Map();
     this.pendingInteractions = new Map();
   }
   async start() {
@@ -61,14 +63,25 @@ export class KimiRuntime {
     else await this.native.call('/api/v1/providers', body);
     const alias = id + '/' + route.model; this.models.set(key, alias); return alias;
   }
-  async bind(agent, route, effort, signal) {
+  async ensureBinding(agent) {
+    if (this.bindingLoads.has(agent.session.id)) return this.bindingLoads.get(agent.session.id);
+    const load = this.createBinding(agent);
+    this.bindingLoads.set(agent.session.id,load);
+    try { return await load; } finally { this.bindingLoads.delete(agent.session.id); }
+  }
+  async createBinding(agent) {
     const session = agent.session; let binding = latest(session);
     if (!binding || binding.sessionId !== session.id) {
       const native = binding ? await this.native.call(`/api/v1/sessions/${binding.nativeId}:fork`, {})
         : await this.native.call('/api/v1/sessions', { metadata: { cwd: session.header.cwd }, title: 'DSH · ' + session.id });
-      binding = { sessionId: session.id, nativeId: native.id, cwd: session.header.cwd, provider: route.provider, model: route.model };
+      binding = { sessionId: session.id, nativeId: native.id, cwd: session.header.cwd };
       await this.save(session, binding);
     }
+    return binding;
+  }
+  async bind(agent, route, effort, signal) {
+    const session = agent.session;
+    let binding = await this.ensureBinding(agent);
     if (!await this.native.refreshExternal(binding.nativeId)) throw new Error('该会话仍由原生 Kimi CLI 或后台任务使用；请结束该轮并退出 CLI 后再从 DSH 接续。');
     const permissions = this.ctx.sandboxPolicy.resolve({ session });
     // The native REST server is not an OS filesystem sandbox. Never label unrestricted execution as workspace isolation.
@@ -86,7 +99,9 @@ export class KimiRuntime {
   }
   async refreshCatalog(sessionId,nativeId) {
     const result=await this.native.call(`/api/v1/sessions/${nativeId}/skills`);
-    for(const callback of this.catalogListeners.get(sessionId) ?? []) callback(result.items ?? result.skills ?? []);
+    const skills = result.items ?? result.skills ?? [];
+    this.skillCatalogs.set(sessionId,skills);
+    for(const callback of this.catalogListeners.get(sessionId) ?? []) callback(skills);
   }
   async interactions(agent, binding, signal) {
     const root = `/api/v1/sessions/${binding.nativeId}`;
@@ -128,7 +143,7 @@ export class KimiRuntime {
     let socket, binding, submitted = false, beforeUsage;
     const queue = []; let wake;
     const push = frame => { queue.push(frame); wake?.(); wake = undefined; };
-    const promptId = randomUUID(); let output = '', reasoning = '', startedText = false, startedReasoning = false;
+    let promptId = randomUUID(); let output = '', reasoning = '', startedText = false, startedReasoning = false;
     let lastDelta = Date.now(), snapshotMode = false, progressHash;
     try {
       binding = await this.bind(agent, route, options.reasoningEffort, signal);
@@ -136,8 +151,10 @@ export class KimiRuntime {
       socket = await this.native.subscribe(binding.nativeId, push);
       const human = options.messages.findLast(m => m.role === 'user' && m.source?.kind === 'user');
       if (!human) throw new Error('No user input for Kimi');
+      const request = nativePrompt(await promptContent(this.ctx, human), this.skillCatalogs.get(agent.session.id));
+      const accepted = await this.native.call(`/api/v1/sessions/${binding.nativeId}/prompts`, nativeSubmission(promptId, request)); submitted = true;
+      if (request.skills) promptId = accepted.prompt_id;
       log(agent.session, 'run', { nativeId: binding.nativeId, promptId, status: 'running' });
-      await this.native.call(`/api/v1/sessions/${binding.nativeId}/prompts`, { prompt_id: promptId, ...nativePrompt(await promptContent(this.ctx, human)) }); submitted = true;
       let finished = false;
       while (!finished || queue.length) {
         signal.throwIfAborted();
@@ -197,9 +214,9 @@ export class KimiRuntime {
         const remainder = answer.slice(output.length); output = answer;
         yield { type: 'text-delta', index: 0, text: remainder };
       }
-      if (startedReasoning) yield { type: 'block-end', index: 1, block: { type: 'reasoning', text: reasoning } };
+      if (startedReasoning) { yield { type: 'block-end', index: 1, block: { type: 'reasoning', text: reasoning } }; startedReasoning=false; }
       if (answer) output = answer;
-      if (startedText) yield { type: 'block-end', index: 0, block: { type: 'text', text: output } };
+      if (startedText) { yield { type: 'block-end', index: 0, block: { type: 'text', text: output } }; startedText=false; }
       const state = await this.native.call(`/api/v1/sessions/${binding.nativeId}`);
       if(current?.usage) {
         const usage=current.usage;
@@ -216,7 +233,10 @@ export class KimiRuntime {
       yield { type: 'finish', reason: failed ? { kind: 'error', failure: { code: 'KIMI_NATIVE', message: `Native Kimi turn ${current?.state ?? state.last_turn_reason}; inspect the Kimi trace.` } } : { kind: 'stop' }, replayState: { response: { nativeId: binding.nativeId, promptId } } };
     } catch (error) {
       if (binding) log(agent.session, 'run', {nativeId:binding.nativeId,promptId,status:signal.aborted?'cancelled':'failed',error:error instanceof Error?error.message:String(error)});
-      throw error;
+      if (signal.aborted) throw error;
+      if (startedReasoning) yield {type:'block-end',index:1,block:{type:'reasoning',text:reasoning}};
+      if (startedText) yield {type:'block-end',index:0,block:{type:'text',text:output}};
+      yield {type:'finish',reason:{kind:'error',failure:{code:'KIMI_BRIDGE',message:error instanceof Error?error.message:String(error)}}};
     } finally {
       if (signal.aborted && submitted && options.signal?.aborted) await this.native.call(`/api/v1/sessions/${binding.nativeId}:abort`, {}).catch(e => this.ctx.logger.warn(e.message));
       socket?.close(); this.busy.delete(agent.session.id);settled();this.running.delete(completion);
@@ -228,20 +248,16 @@ export class KimiRuntime {
   }
   async command(invocation, command) {
     await this.ready;
+    command = aliases[command] ?? command;
     let raw = invocation.rawInput.trim();
     if (command === 'kimi') { const first = raw.indexOf(' '); command = first < 0 ? raw || 'help' : raw.slice(0, first); raw = first < 0 ? '' : raw.slice(first + 1).trim(); }
     if (command === 'help') return { kind: 'success', text: Object.entries(commandHelp).map(([name,[text]])=>`/${name} — ${text}`).join('\n') };
     if (command === 'version') return {kind:'success',text:JSON.stringify(await this.native.call('/api/v1/meta'),null,2)};
-    if ((command === 'swarm' && raw && !['on','off'].includes(raw)) || (command === 'goal' && raw && !['status','pause','resume','cancel'].includes(raw))) {
+    if (command.startsWith('skill:') || (command === 'swarm' && raw && !['on','off'].includes(raw)) || (command === 'goal' && raw && !['status','pause','resume','cancel'].includes(raw))) {
       await this.ctx.sessionController.prompt({sessionId:invocation.agent.session.id,requestId:randomUUID(),mode:'queue',content:[{type:'text',text:`/${command} ${raw}`} ]},invocation.signal);
       return {kind:'success',text:'任务已提交到当前 Kimi 会话，执行结果将显示在对话中。'};
     }
-    let binding = latest(invocation.agent.session);
-    if (!binding) {
-      const native=await this.native.call('/api/v1/sessions',{metadata:{cwd:invocation.agent.session.header.cwd},title:'DSH · '+invocation.agent.session.id});
-      binding={sessionId:invocation.agent.session.id,nativeId:native.id,cwd:invocation.agent.session.header.cwd};
-      await this.save(invocation.agent.session,binding);
-    }
+    const binding = await this.ensureBinding(invocation.agent);
     const root = `/api/v1/sessions/${binding.nativeId}`;
     if (command === 'resume') return { kind: 'success', text: `服务器原生会话：${binding.nativeId}\ncd ${JSON.stringify(binding.cwd)} && /opt/kimi-code/bin/kimi --session ${binding.nativeId}` };
     return invocation.agent.runMaintenance(async () => {
@@ -300,9 +316,12 @@ export class KimiRuntime {
       if (this.pendingInteractions.has(binding.sessionId)) continue;
       if (!await this.native.refreshExternal(binding.nativeId)) continue;
       const { turns } = await this.native.transcript(binding.nativeId, binding.nativePromptId ? {turnId:binding.nativeTurnId,promptId:binding.nativePromptId} : undefined);
-      const ownPrompts = new Set(agent.session.snapshotEvents().filter(e=>e.type==='kimi/run').map(e=>e.data.promptId));
+      const ownEvents = agent.session.snapshotEvents();
+      const ownPrompts = new Set(ownEvents.filter(e=>e.type==='kimi/run').map(e=>e.data.promptId));
+      const failedPrompts = new Set(ownEvents.filter(e=>e.type==='kimi/run' && e.data.status==='failed').map(e=>e.data.promptId));
+      const savedTranscripts = new Set(ownEvents.filter(e=>e.type==='kimi/transcript').map(e=>e.data.promptId));
       const imported = new Set(agent.session.snapshotEvents().filter(e=>e.type==='kimi/imported-turn').map(e=>e.data.nativeId + '/' + e.data.turn.triggerPromptId));
-      const pending = turns.filter(t=>typeof t.triggerPromptId==='string' && ['completed','failed','cancelled'].includes(t.state) && !ownPrompts.has(t.triggerPromptId) && !imported.has(binding.nativeId+'/'+t.triggerPromptId));
+      const pending = turns.filter(t=>typeof t.triggerPromptId==='string' && ['completed','failed','cancelled'].includes(t.state) && (!ownPrompts.has(t.triggerPromptId) || (failedPrompts.has(t.triggerPromptId) && !savedTranscripts.has(t.triggerPromptId))) && !imported.has(binding.nativeId+'/'+t.triggerPromptId));
       if (!pending.length) continue;
       if (agent.phase?.kind !== 'idle' || !Number.isInteger(agent.phase.lastTurn)) throw new Error('Unsupported DSH maintenance cursor');
       await agent.runMaintenance(async () => {
@@ -312,10 +331,13 @@ export class KimiRuntime {
           number++;
           session.append('turn/start', { turn:number }); session.append('step/start', { turn:number, step:1 });
           const prefix=`kimi-${binding.nativeId}-${turn.triggerPromptId}`;
-          if(content.length) session.append('user/message',{id:prefix+'-user',role:'user',content,source:{kind:'user'}},{surfaceOp:'append'});
+          if(content.length && !ownPrompts.has(turn.triggerPromptId)) session.append('user/message',{id:prefix+'-user',role:'user',content,source:{kind:'user'}},{surfaceOp:'append'});
           const answer=turnText(turn);
           if(answer) session.append('assistant/message',{turn:number,step:1,message:{id:prefix+'-answer',role:'assistant',content:[{type:'text',text:answer}],source:{kind:'model',provider:'kimi',model:encodeRoute(binding.provider,binding.model)}},stream:[]},{surfaceOp:'append'});
-          log(session,'imported-turn',{nativeId:binding.nativeId,turnId:turn.turnId,turn});
+          if (ownPrompts.has(turn.triggerPromptId)) {
+            log(session,'transcript',{nativeId:binding.nativeId,promptId:turn.triggerPromptId,turn});
+            log(session,'run',{nativeId:binding.nativeId,promptId:turn.triggerPromptId,status:turn.state,recovered:true});
+          } else log(session,'imported-turn',{nativeId:binding.nativeId,turnId:turn.turnId,turn});
           session.append('step/end',{turn:number,step:1}); session.append('turn/end',{turn:number,reason:turn.state==='completed'?{kind:'completed'}:{kind:'aborted',reason:{kind:'legacy'}}});
         }
         await this.save(session, { ...binding, nativeTurnId:pending.at(-1).turnId, nativePromptId:pending.at(-1).triggerPromptId }); agent.phase.lastTurn = number;
