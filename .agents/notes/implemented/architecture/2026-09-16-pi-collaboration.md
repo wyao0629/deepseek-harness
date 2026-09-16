@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> Superseded product status: the user rejected and archived this prototype on 2026-09-16. The tests below are historical technical evidence, not product acceptance. Source now lives in `personal/archived/dsh-pi-collab`.
+
 English | [中文](2026-09-16-pi-collaboration.zh.md)
 
 ## Problem
@@ -10,7 +12,7 @@ The existing native-harness cards visualize delegated work but do not offer an i
 
 ## Decision
 
-Add `personal/dsh-pi-collab` as a standalone bundle and preset. PI-Desktop task delegation is the functional reference, not merely a diagram. DSH spawn sessions provide isolated task contexts, model routing and existing permissions. DSH jobs own cancellation, resource cleanup and completion wakeups. Task/Wait/List/Stop wrappers expose the lifecycle without a second LLM execution loop.
+Add `personal/archived/dsh-pi-collab` as a standalone bundle and preset. PI-Desktop task delegation is the functional reference, not merely a diagram. DSH spawn sessions provide isolated task contexts, model routing and existing permissions. DSH jobs own cancellation, resource cleanup and completion wakeups. Task/Wait/List/Stop wrappers expose the lifecycle without a second LLM execution loop.
 
 ## Alternatives considered
 

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> 产品状态更正：用户于 2026-09-16 否决并封存本原型。下列测试仅为历史技术证据，不代表产品验收。代码现位于 `personal/archived/dsh-pi-collab`。
+
 [English](2026-09-16-pi-collaboration.md) | 中文
 
 ## 问题
@@ -10,7 +12,7 @@ Status: implemented
 
 ## 决策
 
-新增独立 bundle 和预设 `personal/dsh-pi-collab`。以 PI-Desktop 的任务委派功能为参考，而非仅复制图表。DSH spawn 子会话提供隔离任务上下文、模型路由及现有权限；DSH jobs 负责取消、资源清理和完成唤醒。Task/Wait/List/Stop 包装层提供生命周期控制，不重复实现 LLM 执行循环。
+新增独立 bundle 和预设 `personal/archived/dsh-pi-collab`。以 PI-Desktop 的任务委派功能为参考，而非仅复制图表。DSH spawn 子会话提供隔离任务上下文、模型路由及现有权限；DSH jobs 负责取消、资源清理和完成唤醒。Task/Wait/List/Stop 包装层提供生命周期控制，不重复实现 LLM 执行循环。
 
 ## 考虑过的替代方案
 

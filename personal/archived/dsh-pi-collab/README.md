@@ -1,5 +1,7 @@
 # dsh-pi-collab
 
+> **Archived unfinished prototype — not accepted, not deployed.** This version incorrectly restricts collaboration to a dedicated agent preset. It is not a faithful port of the user's PI subagent functionality. Do not install or treat its earlier technical tests as product acceptance. See [archive and handoff](ARCHIVE.md).
+
 English | [中文](README.zh.md)
 
 Independent multi-agent collaboration for DSH, modeled on the local PI-Desktop task lifecycle. It uses DSH child sessions and background jobs; it does not embed the PI-Desktop runtime or replace native Kimi/Codex harnesses.
@@ -24,10 +26,10 @@ DSH's job controller delivers completion notices and resumes the parent. Child e
 
 This is a profile bundle: `cordis.patch.yml` mounts the host installer, which creates the `pi-collab` agent preset on first activation. The preset mounts `dsh-pi-collab/tools` alongside standard DSH tools and its background-job controller. It requires the host's `spawn` provider, jobs, tools and LLM services. Browser code uses DSH's client module loader.
 
-The current server deployment links this directory into the web profile, declares the bundle in the profile manifest, and shares the installed DSH dependencies. Existing presets are never overwritten automatically.
+The former server deployment linked this directory into the web profile, declares the bundle in the profile manifest, and shares the installed DSH dependencies. Existing presets are never overwritten automatically.
 
 Task controls are process-local. Persisted conversation cards survive reloads, but in-flight jobs do not resume after a server restart. Roles are currently the four bundled definitions; custom role editing, nested delegation and steering a running child are not implemented. Use this preset for DSH-native model execution; native Kimi and Codex presets retain their own collaboration mechanisms.
 
 ## Validation
 
-Run `node --test personal/dsh-pi-collab/test/*.test.mjs` from the repository root. Five tests cover independent results, concurrent limits, ownership, timeout, cancellation, startup failure, resource disposal and isolated UI reduction. The server functional-test workspace also contains **独立多 Agent 协作验收 0916**, verifying two actual child results, cancellation and automatic parent wakeup. Browser inspection verified the task tree and separate child output.
+Run `node --test personal/archived/dsh-pi-collab/test/*.test.mjs` from the repository root. Five tests cover independent results, concurrent limits, ownership, timeout, cancellation, startup failure, resource disposal and isolated UI reduction. The server functional-test workspace also contains **独立多 Agent 协作验收 0916**, verifying two actual child results, cancellation and automatic parent wakeup. Browser inspection verified the task tree and separate child output.

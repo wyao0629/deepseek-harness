@@ -1,5 +1,7 @@
 # dsh-pi-collab
 
+> **已封存的半成品：未获验收，已撤下部署。** 本版本错误地将协同能力限制在专用 Agent 预设中，不是用户要求的 PI 子 Agent 功能插件完整移植。请勿安装，也不要将此前技术测试通过视为产品验收通过。参见[封存与交接说明](ARCHIVE.md)。
+
 [English](README.md) | 中文
 
 参考本地 PI-Desktop 任务生命周期构建的 DSH 独立多 Agent 协同插件。底层使用 DSH 子会话和后台任务，不嵌入 PI-Desktop 运行时，也不替换 Kimi/Codex 原生 harness。
@@ -24,10 +26,10 @@ DSH 后台任务控制器发送完成通知并唤醒主 Agent。子任务沿用�
 
 这是 profile bundle：`cordis.patch.yml` 挂载主机安装器，首次激活时创建 `pi-collab` 预设。预设在标准 DSH 工具及后台任务控制器旁挂载 `dsh-pi-collab/tools`，依赖主机已有的 `spawn`、jobs、tools 和 LLM 服务。浏览器端使用 DSH 客户端模块加载器。
 
-当前服务器通过软链接将本目录接入 web profile，在 profile 清单声明 bundle，并共用已安装的 DSH 依赖。已有预设不会被自动覆盖。
+此前服务器通过软链接将本目录接入 web profile，在 profile 清单声明 bundle，并共用已安装的 DSH 依赖。已有预设不会被自动覆盖。
 
 任务控制状态保存在当前进程内。历史对话卡片刷新后仍保留，但服务器重启后不会自动续跑执行中的任务。目前提供四个内置角色，尚未实现自定义角色编辑、嵌套委派和运行中追加指令。该预设使用 DSH 原生模型执行；Kimi、Codex 原生预设继续使用各自的协同机制。
 
 ## 验证
 
-在仓库根目录运行 `node --test personal/dsh-pi-collab/test/*.test.mjs`。五项测试覆盖独立结果、并发上限、会话归属、超时、取消、启动失败、资源释放及界面隔离归并。服务器“功能测试”工作区的 **独立多 Agent 协作验收 0916** 验证了两个真实子任务结果、取消及主 Agent 自动唤醒。浏览器检查确认了任务树和独立子任务输出。
+在仓库根目录运行 `node --test personal/archived/dsh-pi-collab/test/*.test.mjs`。五项测试覆盖独立结果、并发上限、会话归属、超时、取消、启动失败、资源释放及界面隔离归并。服务器“功能测试”工作区的 **独立多 Agent 协作验收 0916** 验证了两个真实子任务结果、取消及主 Agent 自动唤醒。浏览器检查确认了任务树和独立子任务输出。
