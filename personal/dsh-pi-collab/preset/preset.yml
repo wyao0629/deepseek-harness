@@ -1,0 +1,3 @@
+name: 多 Agent 协作
+description: 主 Agent 拆分任务，调研、执行、审查与测试角色独立并行工作；使用当前 DSH 模型与权限，自动回传结果。
+order: 5

@@ -1,0 +1,33 @@
+{
+  "name": "dsh-pi-collab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "独立多 Agent 协同：后台派发、独立上下文、等待、停止与结果汇总",
+  "exports": {
+    ".": "./lib/host.mjs",
+    "./tools": "./lib/tools.mjs",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": ">=0.1.5-rc.1",
+    "@deepseek-ai/dsh-subagent": ">=0.1.5-rc.1",
+    "@deepseek-ai/dsh-home-paths": ">=0.1.5-rc.1"
+  }
+}
